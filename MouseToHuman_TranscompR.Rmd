@@ -1,0 +1,2274 @@
+---
+title: "Cross-Species Modeling Identifies Gene Signatures in Type 2 Diabetes Mouse Models Predictive of Inflammatory and Estrogen Signaling Pathways Associated with Alzheimer’s Disease Outcomes in Humans"
+author: "Brendan K. Ball"
+date: "2024-08-01"
+output: html_document
+---
+
+# 0. IMPORT PACKAGES
+```{r Package Import, include=FALSE, warning=FALSE}
+# Downloads and calls from the library the necessary packages needed to run the code
+# CRAN
+if(!require(stringr)) install.packages("stringr", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (stringr, verbose = FALSE))
+if(!require(gtools)) install.packages("gtools", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (gtools, verbose = FALSE))
+if(!require(dplyr)) install.packages("dplyr", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (dplyr, verbose = FALSE))
+if(!require(factoextra)) install.packages("factoextra", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (factoextra, verbose = FALSE))
+if(!require(devtools)) install.packages("devtools", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (devtools, verbose = FALSE))
+if(!require(data.table)) install.packages("data.table", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (data.table, verbose = FALSE))
+if(!require(tibble)) install.packages("tibble", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (tibble, verbose = FALSE))
+if(!require(lme4)) install.packages("lme4", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (lme4, verbose = FALSE))
+if(!require(emmeans)) install.packages("emmeans", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (emmeans, verbose = FALSE))
+if(!require(effects)) install.packages("effects", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (effects, verbose = FALSE))
+if(!require(ggforce)) install.packages("ggforce", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (ggforce, verbose = FALSE))
+if(!require(pheatmap)) install.packages("pheatmap", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (pheatmap, verbose = FALSE))
+if(!require(limma)) install.packages("limma", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (limma, verbose = FALSE))
+if(!require(umap)) install.packages("umap", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (umap, verbose = FALSE))
+if(!require(powerjoin)) install.packages("powerjoin", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (powerjoin, verbose = FALSE))
+if(!require(purrr)) install.packages("purrr", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (purrr, verbose = FALSE))
+if(!require(glmnet)) install.packages("glmnet", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (glmnet, verbose = FALSE))
+if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (tidyverse, verbose = FALSE))
+if(!require(dittoSeq)) install.packages("dittoSeq", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (dittoSeq, verbose = FALSE))
+if(!require(openxlsx)) install.packages("openxlsx", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (openxlsx, verbose = FALSE))
+if(!require(qusage)) install.packages("qusage", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (qusage, verbose = FALSE))
+if(!require(ggpubr)) install.packages("ggpubr", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (ggpubr, verbose = FALSE))
+if(!require(umap)) install.packages("umap", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (umap, verbose = FALSE))
+if(!require(corrplot)) install.packages("corrplot", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (corrplot, verbose = FALSE))
+# Bioconductor Import
+if (!requireNamespace('BiocManager', quietly = TRUE)) install.packages('BiocManager')
+suppressWarnings(library(BiocManager, verbose = FALSE))
+if (!require("fgsea")) {BiocManager::install("fgsea")}
+suppressWarnings(library (fgsea, verbose = FALSE))
+if (!require("mixOmics")) {BiocManager::install("mixOmics")}
+suppressWarnings(library (mixOmics, verbose = FALSE))
+if (!require("clusterProfiler")) {BiocManager::install("clusterProfiler")}
+suppressWarnings(library (clusterProfiler, verbose = FALSE))
+if (!require("EnrichmentBrowser")) {BiocManager::install("EnrichmentBrowser")}
+suppressWarnings(library (EnrichmentBrowser, verbose = FALSE))
+if (!require("EnhancedVolcano")) {BiocManager::install("EnhancedVolcano")}
+suppressWarnings(library (EnhancedVolcano, verbose = FALSE))
+if (!require("GEOquery")) {BiocManager::install("GEOquery")}
+suppressWarnings(library (GEOquery, verbose = FALSE))
+if (!require("orthogene")) {BiocManager::install("orthogene")}
+suppressWarnings(library (orthogene, verbose = FALSE))
+if (!require("msigdbr")) {BiocManager::install("msigdbr")}
+suppressWarnings(library (msigdbr, verbose = FALSE))
+if(!require(org.Hs.eg.db)) install.packages("org.Hs.eg.db", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (org.Hs.eg.db, verbose = FALSE))
+```
+
+# 1. IMPORT DATA SETS
+```{r GSE48350 GPL570 for Human AD Data}
+# Version info: R 4.2.2, Biobase 2.58.0, GEOquery 2.66.0, limma 3.54.0
+# load series and platform data from GEO
+
+gset <- getGEO("GSE48350", GSEMatrix =TRUE, getGPL=FALSE)
+if (length(gset) > 1) idx <- grep("GPL570", attr(gset, "names")) else idx <- 1
+gset <- gset[[idx]]
+
+ex <- exprs(gset)
+# log2 transform
+qx <- as.numeric(quantile(ex, c(0., 0.25, 0.5, 0.75, 0.99, 1.0), na.rm=T))
+LogC <- (qx[5] > 100) ||
+          (qx[6]-qx[1] > 50 && qx[2] > 0)
+if (LogC) { ex[which(ex <= 0)] <- NaN
+  ex <- log2(ex) }
+
+# box-and-whisker plot
+dev.new(width=3+ncol(gset)/6, height=5)
+par(mar=c(7,4,2,1))
+title <- paste ("GSE48350", "/", annotation(gset), sep ="")
+boxplot(ex, boxwex=0.7, notch=T, main=title, outline=FALSE, las=2)
+dev.off()
+
+# expression value distribution plot
+par(mar=c(4,4,2,1))
+title <- paste ("GSE48350", "/", annotation(gset), " value distribution", sep ="")
+plotDensities(ex, main=title, legend=F)
+
+# mean-variance trend
+ex <- na.omit(ex) # eliminate rows with NAs
+plotSA(lmFit(ex), main="Mean variance trend, GSE48350")
+
+# UMAP plot (multi-dimensional scaling)
+ex <- ex[!duplicated(ex), ]  # remove duplicates
+ump <- umap(t(ex), n_neighbors = 15, random_state = 123)
+plot(ump$layout, main="UMAP plot, nbrs=15", xlab="", ylab="", pch=20, cex=1.5)
+
+mut_human <- as.data.frame(ex)
+
+# IMPORT GPL570 CONVERSION AND GSE48350 SUBJECTID INFORMATION FOR HUMAN AD DATA
+# Import GSE48350 GPL570 Import
+GPL570conv <- read.csv("GPL570.csv")
+GPL570conv <- GPL570conv[c(1,3)]
+
+# Prepare the gene row name to be transferred to the mut_human df
+gene_row_name_human <- rownames(mut_human)
+mut_human_names <- cbind(gene_row_name_human, mut_human)
+# Make standard geneID column name for df joining
+colnames(mut_human_names)[1] <- "ID"
+# Combine the mut_human_names file into the GPL570 data conversion to create a gene list 
+mut_human_gene <- GPL570conv %>% inner_join(mut_human_names, by = 'ID', copy = TRUE)
+
+# Rename the second column Gene.Symbol to geneID
+colnames(mut_human_gene)[2] <- "geneID"
+
+# Import GSE48350 SubjectID Information
+GSE48350_subjectID <- read.csv("GSE48350_subjectID.csv")
+```
+
+```{r Import GSE152539 for AD/T2D Mouse Data}
+# Import GEO2R for Mouse Data
+# https://www.ncbi.nlm.nih.gov/geo/geo2r/?acc=GSE152539
+# Version info: R 4.2.2, Biobase 2.58.0, GEOquery 2.66.0, limma 3.54.0
+# load series and platform data from GEO
+gset <- getGEO("GSE152539", GSEMatrix =TRUE, getGPL=FALSE)
+if (length(gset) > 1) idx <- grep("GPL16570", attr(gset, "names")) else idx <- 1
+gset <- gset[[idx]]
+
+ex <- exprs(gset)
+# log2 transform
+qx <- as.numeric(quantile(ex, c(0., 0.25, 0.5, 0.75, 0.99, 1.0), na.rm=T))
+LogC <- (qx[5] > 100) ||
+          (qx[6]-qx[1] > 50 && qx[2] > 0)
+if (LogC) { ex[which(ex <= 0)] <- NaN
+  ex <- log2(ex) }
+
+# box-and-whisker plot
+par(mar=c(7,4,2,1))
+title <- paste ("GSE152539", "/", annotation(gset), sep ="")
+boxplot(ex, boxwex=0.7, notch=T, main=title, outline=FALSE, las=2)
+
+# expression value distribution plot
+par(mar=c(4,4,2,1))
+title <- paste ("GSE152539", "/", annotation(gset), " value distribution", sep ="")
+plotDensities(ex, main=title, legend=F)
+
+# mean-variance trend
+ex <- na.omit(ex) # eliminate rows with NAs
+plotSA(lmFit(ex), main="Mean variance trend, GSE152539")
+
+# UMAP plot (multi-dimensional scaling)
+ex <- ex[!duplicated(ex), ]  # remove duplicates
+ump <- umap(t(ex), n_neighbors = 5, random_state = 123)
+plot(ump$layout, main="UMAP plot, nbrs=5", xlab="", ylab="", pch=20, cex=1.5)
+# Define mousedat as the gene expression list from GEO2R
+mousedat <- ex
+# Convert the mousedat to a dataframe
+mouse_filt_all <- as.data.frame(mousedat)
+
+# IMPORT GPL16570 CONVERSION FOR MOUSE AD/T2D DATA AND GSE152539 SUBJECTID INFORMATION
+# [MoGene-2_0-st] Affymetrix Mouse Gene 2.0 ST Array [transcript (gene) version]
+GPL16570conv <- read.csv("GSE152539_GeneID_List.csv")
+
+# Import Mouse sampleID Information
+# https://www.ncbi.nlm.nih.gov/geo/geo2r/?acc=GSE152539
+mousedat_sampleID <- read.csv("GSE152539_SampleID.csv")
+```
+
+# 2. DATA WRANGLING & PROCESSING
+```{r Preparation of Gene List with Respective Converters}
+# Create a list for conversion of gene list
+# Function to extract string between first and second "//" for geneID
+extract_string <- function(input_string) {
+  split_string <- unlist(strsplit(input_string, " // "))
+  return(split_string[2])
+}
+
+# GENE LIST PREPARATION FOR HUMAN DATA
+# Prepare the gene row name to be transferred to the mut_human df
+gene_row_name_human <- rownames(mut_human)
+mut_human_names <- cbind(gene_row_name_human, mut_human)
+# Make standard geneID column name for df joining
+colnames(mut_human_names)[1] <- "ID"
+# Combine the mut_human_names file into the GPL6244 data conversion to create a gene list 
+mut_human_gene <- GPL570conv %>% inner_join(mut_human_names, by = 'ID', copy = TRUE)
+# Rename the second column Gene.Symbol to geneID
+colnames(mut_human_gene)[2] <- "geneID"
+
+# GENE LIST PREPARATION FOR MOUSE DATA (AD/T2D DATA)
+# Apply the function to the entire column using mutate
+mousedat_procgenelist <- GPL16570conv %>% 
+  mutate(result_column = sapply(gene_assignment, extract_string))
+# Contain the ID Number and geneID in the list for mousedat geneID translation
+mousedat_procgenelist <- mousedat_procgenelist[c(1,20)]
+
+# Move the rowname to the first column of the dataframe
+mouse_filt_all <- cbind(rownames(mouse_filt_all), data.frame(mouse_filt_all, row.names=NULL))
+# Rename the first column to ID
+colnames(mouse_filt_all)[1] <- "ID"
+# Combine the ID group with the gene list for the mouse group
+mousedat_proc <- mousedat_procgenelist %>% inner_join(mouse_filt_all, by = 'ID', copy = TRUE)
+# Remove the column with the ID numbers
+mousedat_proc <- mousedat_proc[-1]
+# Rename the gene identifier column as geneID
+colnames(mousedat_proc)[1] <- "geneID"
+# Remove any rows with NA in the geneID column
+mousedat_proc <- mousedat_proc %>% drop_na(geneID)
+```
+
+## 2.1 Orthologous Pairs Matching & Gene List
+```{r Match Gene Pairs of Mouse and Human}
+# GENE MATCHING PREPARATION FOR HUMAN DATA
+# Rename data set
+humandat <- mut_human_gene
+# Remove the column with the ID numbers
+humandat_proc <- humandat[-1]
+# Remove any rows with NA in the geneID column
+humandat_proc <- humandat_proc %>% drop_na(geneID)
+
+# Take the transpose of the human data set
+humandat_proc_t <- t(humandat_proc)
+colnames(humandat_proc_t) <- humandat_proc_t[1,]
+humandat_proc_t <- humandat_proc_t[-1,] 
+# Convert to data frame
+humandat_proc_t <- as.data.frame(humandat_proc_t)
+# Confirm all gene words are upper case for case sensitive intersection
+names(humandat_proc_t) <- toupper(names(humandat_proc_t))
+# Confirm data sets is a data frame
+humandat_proc_t <- as.data.frame(humandat_proc_t)
+
+# GENE MATCHING PREPARATION FOR MOUSE DATA (AD/T2D DATA)
+# Take the transpose of the mouse AD/T2D data set
+mousedat_proc_t <- t(mousedat_proc)
+colnames(mousedat_proc_t) <- mousedat_proc_t[1,]
+mousedat_proc_t <- mousedat_proc_t[-1,] 
+# Convert to data frame
+mousedat_proc_t <- as.data.frame(mousedat_proc_t)
+# Orthologous pair matching using orthogene package
+# Filter and process orthologous pairs between mouse and human
+gene_mouse_df <- t(mousedat_proc_t)
+# Filter for the gene ortholog pairs between mouse and human, drop all that are not pairs
+mousedat_ortholog <- orthogene::convert_orthologs(gene_df = gene_mouse_df,
+                                        gene_input = "rownames", 
+                                        gene_output = "rownames", 
+                                        input_species = "mouse",
+                                        output_species = "human",
+                                        non121_strategy = "drop_both_species") 
+# Transpose again and prepare the processed mouse data set
+mousedat_proc_t <- t(mousedat_ortholog)
+# Confirm all gene words are upper case for case sensitive intersection
+names(mousedat_proc_t) <- toupper(names(mousedat_proc_t))
+# Convert data sets to a data frame
+mousedat_proc_t <- as.data.frame(mousedat_proc_t)
+
+# INTERSECTION OF GENES ACROSS MOUSE & HUMAN DATA
+# Only save data that has genes that intersect between the humans and mouse data 3-way
+col_extracted <- intersect(colnames(mousedat_proc_t), colnames(humandat_proc_t))
+# Define the mouse and human genes that are crossed together for matching
+humandat_proc_int <- humandat_proc_t[,col_extracted]
+mousedat_proc_int <- mousedat_proc_t[,col_extracted]
+# Calculate the percent of genes preserved from each data set
+percentdrop_human_proc <- ncol(humandat_proc_int)/ncol(humandat_proc_t)
+percentdrop_mouse_proc <- ncol(mousedat_proc_int)/ncol(mousedat_proc_t)
+```
+
+## 2.2 Incorporation of Subject Information into Data
+```{r Attach Subject Information to the Gene Expression Data}
+# Function to calculate z-score for a vector
+calc_z_score <- function(x) {
+  (x - mean(x)) / sd(x)
+}
+
+# SUBJECT INFORMATION WITH HUMAN DATA FOR Xh
+# Human Data Combination
+# Move the row names to be in the first column
+humandat_proc_int <- tibble::rownames_to_column(humandat_proc_int)
+colnames(humandat_proc_int)[1] <- "SampleID"
+# Replace the Characteristics to the numerical value for age
+GSE48350_subjectID$Characteristics <- gsub("[^0-9]", "", GSE48350_subjectID$Characteristics)
+# Rename the characteristics column to age, then make the column numeric
+names(GSE48350_subjectID)[which(names(GSE48350_subjectID) == "Characteristics")] <- "Age"
+GSE48350_subjectID$Age <- as.numeric(GSE48350_subjectID$Age)
+# Replace any missing entries with NA, then replace the naming to "Control" - these entries are empty due to being control groups
+GSE48350_subjectID <- replace(GSE48350_subjectID, GSE48350_subjectID == "", NA)
+GSE48350_subjectID[is.na(GSE48350_subjectID)] <- "Control"
+# Create a new column "Condition" to classify the human groups into AD or Control groups
+GSE48350_subjectID$Condition <- ifelse(GSE48350_subjectID$Braak.stage == "Control", "Control", "AD")
+# Replace Gender with Sex in column name
+names(GSE48350_subjectID)[which(names(GSE48350_subjectID) == "Gender")] <- "Sex"
+# Replace Sex String with F or M (F=Female, M=Male)
+GSE48350_subjectID$Sex[GSE48350_subjectID$Sex == 'female'] <- 'F'
+GSE48350_subjectID$Sex[GSE48350_subjectID$Sex == 'male'] <- 'M'
+# Remove the excess columns not needed for analysis
+GSE48350_subjectID = GSE48350_subjectID[,!(names(GSE48350_subjectID) %in% c("Accession", "Group","Title", "Source.name","Individual"))]
+# Combine the subjectID and human data to create the Xh dataset
+Xhumandat <- cbind(GSE48350_subjectID, humandat_proc_int)
+# Remove the excess columns not needed for analysis
+#Xhumandat = Xhumandat[,!(names(Xhumandat) %in% c("SampleID"))]
+# Searches for the keyword hippocampus within the human data set to reduce regional-dependent variation
+Xhumandat <- Xhumandat[Xhumandat$Brain.region %in% "hippocampus",]
+# Remove any age groups below 65 years old for late onset of Alzheimer's (removes "young age groups")
+Xhumandat <- subset(Xhumandat, Age>65) 
+# Make the data portions numeric
+for (i in 9:ncol(Xhumandat)) {
+  Xhumandat[,i] <- as.numeric(Xhumandat[,i])
+}
+
+# Loop through each column and apply the z-score transformation for mouse before PCA
+for (i in 9:ncol(Xhumandat)) {
+  Xhumandat[,i] <- calc_z_score(Xhumandat[,i])
+}
+
+# SUBJECT INFORMATION WITH MOUSE DATA - AD/T2D GROUP
+# Move the row names to be in the first column
+mousedat_proc_int <- tibble::rownames_to_column(mousedat_proc_int)
+colnames(mousedat_proc_int)[1] <- "SampleID"
+# Add an additional category defining each mouse group C: T2D Control, T2D: Type 2 Diabetes, WT: AD Wild Type, AD: Alzheimer's Disease
+mousedat_sampleID$Category <- c("C-WT", "C-WT", "C-WT", "T2D-WT", "T2D-WT", "T2D-WT", "C-AD", "C-AD", "C-AD", "T2D-AD", "T2D-AD", "T2D-AD")
+# Remove excess data sections for the completed Xmouse data 
+Xmousedat <- cbind(mousedat_sampleID, mousedat_proc_int)
+Xmousedat <- subset(Xmousedat, select=-c(Group, Accession, Title, Source.name, Tissue, Sex, Age))
+# Make the data portions numeric
+for (i in 6:ncol(Xmousedat)) {
+  Xmousedat[,i] <- as.numeric(Xmousedat[,i])
+}
+# Loop through each column and apply the z-score transformation for mouse before PCA
+for (i in 6:ncol(Xmousedat)) {
+  Xmousedat[,i] <- calc_z_score(Xmousedat[,i])
+}
+
+# PREPARE DATA FRAMES FOR DIFFERENT FILTERED GROUPS
+# Create data frame for AD
+Xmousedat_AD <- Xmousedat[Xmousedat$Category %in% c("C-AD", "C-WT"),]
+# Create data frame for T2D
+Xmousedat_T2D <- Xmousedat[Xmousedat$Category %in% c("T2D-WT", "C-WT"),]
+# Create data frame for Both AD and T2D
+Xmousedat_Both <- Xmousedat[Xmousedat$Category %in% c("T2D-AD", "C-WT"),]
+```
+
+```{r Demographic Information for Human}
+# Separate subset of the Xhumandat for only demographic information
+Xhuman_demographics <- Xhumandat[,c(1:8)]
+
+# Create data frame for AD group and Control group
+Xhuman_demo_AD <- Xhuman_demographics[Xhuman_demographics$Condition %in% "AD",]
+Xhuman_demo_C <- Xhuman_demographics[Xhuman_demographics$Condition %in% "Control",]
+
+# Count demographic information for AD
+# Count occurrences of each gender
+Xhuman_demo_AD$Sex <- factor(Xhuman_demo_AD$Sex, levels = c("M", "F"))
+sex_counts_AD <- table(Xhuman_demo_AD$Sex)
+# Calculate mean and standard deviation of the age for AD group
+age_stats_AD <- Xhuman_demo_AD %>% summarise(
+                                            mean_age = mean(Age, na.rm = TRUE),
+                                            sd_age = sd(Age, na.rm = TRUE)
+                                           )
+
+# Count demographic information for Control
+# Count occurrences of each gender
+Xhuman_demo_C$Sex <- factor(Xhuman_demo_C$Sex, levels = c("M", "F"))
+sex_counts_C <- table(Xhuman_demo_C$Sex)
+# Calculate mean and standard deviation of the age for Control group
+age_stats_C <- Xhuman_demo_C %>% summarise(
+                                            mean_age = mean(Age, na.rm = TRUE),
+                                            sd_age = sd(Age, na.rm = TRUE)
+                                           )
+```
+
+# 3. DATA VISUALIZATION 
+## 3.1 Plotting the PCA Charts for Mouse AD/T2D Dataset Before Separation
+```{r PCA of Mouse AD/T2D Dataset Unfiltered}
+# PCA OF THE MOUSE AD/T2D DATA SET UNFILTERED
+# Data frame for the PCA
+Xmouse_pca <- Xmousedat
+# Prepare the principal components
+Xmouse_pr <- prcomp(Xmouse_pca[c(6:ncol(Xmouse_pca))], center = TRUE, scale = FALSE)
+
+# Extract summary information including percentage of variance explained
+summary_info <- summary(Xmouse_pr)
+# Extract percentage of variance explained for each principal component
+var_exp_mouse <- summary_info$importance[2, ]*100
+# Extract principal component scores
+pcs <- as.data.frame(Xmouse_pr$x)
+# Create a data frame with PC1 and PC2 scores
+pca_df_mouse <- data.frame(PC1 = pcs[,1], PC2 = pcs[,2])
+
+# Establish Color for PCA Chart
+colors <- c("#d73027", "#4575b4", "#fdae61", "paleturquoise")
+# Combine the PCs and the respective disease conditions
+pca_df_mouse <- cbind(pca_df_mouse, Xmouse_pca$Category)
+colnames(pca_df_mouse)[3] <- "Condition"
+pca_df_mouse$Condition <- as.factor(pca_df_mouse$Condition)
+
+#svg('MousePCA.svg', width = 5, height = 4)
+# Plot the PCA Chart 
+ggplot(pca_df_mouse, aes(x = PC1, y = PC2, fill = Condition)) +
+  geom_point(shape = 21, size = 4, color = "black") + 
+  scale_fill_manual(values = colors) +  # Set manual color scale
+ labs(x = paste0("PC1 (", round(var_exp_mouse[1], 1), "%)"), 
+      y = paste0("PC2 (", round(var_exp_mouse[2], 1), "%)"),
+      color = "Condition") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black") +
+  scale_color_manual(values = colors) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+#dev.off()
+```
+
+## 3.2 Plotting the PCA Charts for the Mouse Combinations of Disease Status
+```{r PCA of Mouse AD/T2D Dataset Unfiltered}
+# PCA OF THE MOUSE AD GROUP
+# Data frame for the PCA
+Xmouse_AD_pca <- Xmousedat_AD
+# Prepare the principal components
+Xmouse_AD_pr <- prcomp(Xmouse_AD_pca[c(6:ncol(Xmouse_AD_pca))], center = TRUE, scale = TRUE)
+
+# Extract summary information including percentage of variance explained
+summary_info <- summary(Xmouse_AD_pr)
+# Extract percentage of variance explained for each principal component
+var_exp_mouseAD <- summary_info$importance[2, ]*100
+# Extract principal component scores
+pcs <- as.data.frame(Xmouse_AD_pr$x)
+# Create a data frame with PC1 and PC2 scores
+pca_df_ADmouse <- data.frame(PC1 = pcs[,1], PC2 = pcs[,2])
+
+# Establish Color for PCA Chart
+colors <- c("#d73027", "#4575b4")
+# Combine the PCs and the respective disease conditions
+pca_df_ADmouse <- cbind(pca_df_ADmouse, Xmouse_AD_pca$Category)
+colnames(pca_df_ADmouse)[3] <- "Condition"
+pca_df_ADmouse$Condition <- as.factor(pca_df_ADmouse$Condition)
+
+# Plot the PCA Chart 
+ggplot(pca_df_ADmouse, aes(x = PC1, y = PC2, fill = Condition)) +
+  geom_point(shape = 21, size = 4, color = "black") + 
+  scale_fill_manual(values = colors) +  # Set manual color scale
+ labs(x = paste0("PC1 (", round(var_exp_mouseAD[1], 1), "%)"), 
+      y = paste0("PC2 (", round(var_exp_mouseAD[2], 1), "%)"),
+      color = "Condition") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black") +
+  scale_color_manual(values = colors) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+
+# PCA OF THE MOUSE T2D GROUP
+# Data frame for the PCA
+Xmouse_T2D_pca <- Xmousedat_T2D
+# Prepare the principal components
+Xmouse_T2D_pr <- prcomp(Xmouse_T2D_pca[c(6:ncol(Xmouse_T2D_pca))], center = TRUE, scale = TRUE)
+
+# Extract summary information including percentage of variance explained
+summary_info <- summary(Xmouse_T2D_pr)
+# Extract percentage of variance explained for each principal component
+var_exp_mouseT2D <- summary_info$importance[2, ]*100
+# Extract principal component scores
+pcs <- as.data.frame(Xmouse_T2D_pr$x)
+# Create a data frame with PC1 and PC2 scores
+pca_df_T2Dmouse <- data.frame(PC1 = pcs[,1], PC2 = pcs[,2])
+
+# Establish Color for PCA Chart
+colors <- c("#4575b4","paleturquoise")
+# Combine the PCs and the respective disease conditions
+pca_df_T2Dmouse <- cbind(pca_df_T2Dmouse, Xmouse_T2D_pca$Category)
+colnames(pca_df_T2Dmouse)[3] <- "Condition"
+pca_df_T2Dmouse$Condition <- as.factor(pca_df_T2Dmouse$Condition)
+
+# Plot the PCA Chart 
+ggplot(pca_df_T2Dmouse, aes(x = PC1, y = PC2, fill = Condition)) +
+  geom_point(shape = 21, size = 4, color = "black") + 
+  scale_fill_manual(values = colors) +  # Set manual color scale
+ labs(x = paste0("PC1 (", round(var_exp_mouseT2D[1], 1), "%)"), 
+      y = paste0("PC2 (", round(var_exp_mouseT2D[2], 1), "%)"),
+      color = "Condition") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black") +
+  scale_color_manual(values = colors) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+
+# PCA OF THE MOUSE BOTH (AD/T2D) GROUP
+# Data frame for the PCA
+Xmouse_Both_pca <- Xmousedat_Both
+# Prepare the principal components
+Xmouse_Both_pr <- prcomp(Xmouse_Both_pca[c(6:ncol(Xmouse_Both_pca))], center = TRUE, scale = TRUE)
+
+# Extract summary information including percentage of variance explained
+summary_info <- summary(Xmouse_Both_pr)
+# Extract percentage of variance explained for each principal component
+var_exp_mouseBoth <- summary_info$importance[2, ]*100
+# Extract principal component scores
+pcs <- as.data.frame(Xmouse_Both_pr$x)
+# Create a data frame with PC1 and PC2 scores
+pca_df_Bothmouse <- data.frame(PC1 = pcs[,1], PC2 = pcs[,2])
+
+# Establish Color for PCA Chart
+colors <- c("#4575b4", "#fdae61")
+# Combine the PCs and the respective disease conditions
+pca_df_Bothmouse <- cbind(pca_df_Bothmouse, Xmouse_Both_pca$Category)
+colnames(pca_df_Bothmouse)[3] <- "Condition"
+pca_df_Bothmouse$Condition <- as.factor(pca_df_Bothmouse$Condition)
+
+# Plot the PCA Chart 
+ggplot(pca_df_Bothmouse, aes(x = PC1, y = PC2, fill = Condition)) +
+  geom_point(shape = 21, size = 4, color = "black") + 
+  scale_fill_manual(values = colors) +  # Set manual color scale
+ labs(x = paste0("PC1 (", round(var_exp_mouseBoth[1], 1), "%)"), 
+      y = paste0("PC2 (", round(var_exp_mouseBoth[2], 1), "%)"),
+      color = "Condition") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black") +
+  scale_color_manual(values = colors) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+```
+
+## 3.3 Plotting the PCA Charts for the Human Data Set
+```{r PCA of Human AD-ONLY Dataset Unfiltered}
+# PCA OF THE HUMAN AD DATA SET (UNFILTERED)
+# Data frame for the PCA
+Xhuman_pca <- Xhumandat
+# Prepare the principal components
+Xhuman_pr <- prcomp(Xhuman_pca[c(9:ncol(Xhuman_pca))], center = TRUE, scale = FALSE)
+
+# Extract summary information including percentage of variance explained
+summary_info <- summary(Xhuman_pr)
+# Extract percentage of variance explained for each principal component
+var_exp_human <- summary_info$importance[2, ]*100
+# Extract principal component scores
+pcs <- as.data.frame(Xhuman_pr$x)
+# Create a data frame with PC1 and PC2 scores
+pca_df_human <- data.frame(PC1 = pcs[,1], PC2 = pcs[,2])
+
+# Establish Color for PCA Chart
+colors <- c("#d73027", "#4575b4")
+# Combine the PCs and the respective disease conditions
+pca_df_human <- cbind(pca_df_human, Xhuman_pca$Condition)
+colnames(pca_df_human)[3] <- "Condition"
+pca_df_human$Condition <- as.factor(pca_df_human$Condition)
+
+#svg('HumanPCA.svg', width = 5, height = 4)
+# Plot the PCA Chart 
+ggplot(pca_df_human, aes(x = PC1, y = PC2, fill = Condition)) +
+  geom_point(shape = 21, size = 4, color = "black") + 
+  scale_fill_manual(values = colors) +  # Set manual color scale
+ labs(x = paste0("PC1 (", round(var_exp_human[1], 1), "%)"), 
+       y = paste0("PC2 (", round(var_exp_human[2], 1), "%)"),
+       color = "Condition") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black") +
+  scale_color_manual(values = colors) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+#dev.off()
+```
+
+# 4 CROSS-SPECIES MODELING for the AD-ONLY MODEL
+## 4.1 Cumulative Variance Plot for Mouse PCs
+### 4.1.1 Variance for AD Mouse PCs
+```{r Filtering AD PCs to 80% Explained Variance}
+# Q_mouse data matrix preparation 
+# Remove the identifiers and keep the genes based on each mouse data
+Xmousedat_AD_TCR <- Xmousedat_AD[c(6:ncol(Xmousedat_AD))]
+# Take the transpose of the data frame
+Xmousedat_AD_TCR_t <- t(Xmousedat_AD_TCR)
+# Reset as a data frame
+Xmousedat_AD_TCR_t <- as.data.frame(Xmousedat_AD_TCR_t)
+# Move the row names into the first column
+Xmousedat_AD_TCR_t <- tibble::rownames_to_column(Xmousedat_AD_TCR_t)
+colnames(Xmousedat_AD_TCR_t)[1] <- "GeneID"
+# Prepare the principal component analysis
+mouse_Qm_AD_pr <- prcomp(Xmousedat_AD_TCR_t[c(2:(ncol(Xmousedat_AD_TCR_t)))], center = TRUE, scale = FALSE)
+
+# Prepare the Scree Plot for Mouse HIP Data
+screeplot(mouse_Qm_AD_pr, type = "l", npcs = 6, main = "Scree Plot of the 6PCs")
+abline(h = 1, col="red", lty=20)
+legend("topright", legend=c("Eigenvalue = 1"),
+       col=c("red"), lty=5, cex=0.6)
+#svg('CumVarPlot_AD.svg', width = 4, height = 4)
+# Cumulative Variance Plot for 80% Variance
+cumVar_AD <- cumsum(mouse_Qm_AD_pr$sdev^2 / sum(mouse_Qm_AD_pr$sdev^2))
+plot(cumVar_AD[0:6], xlab = "Principle Component #", ylab = "Amount of Explained Variance", main = "Cumulative Variance Plot")
+abline(v = 5, col="blue", lty=5)
+abline(h = 0.80, col="blue", lty=5)
+legend("bottomright", legend=c("Cut-off @ PC5"),
+       col=c("blue"), lty=5, cex=0.6)
+#dev.off()
+# Using the which() command to determine the PC# greater than or equal to 90%
+print(c("Princial components at 80% variance is:", which(cumVar_AD >= 0.80)[1]))
+PC_80_val_AD <- as.numeric(which(cumVar_AD >= 0.80)[1])
+
+# Collect the PCs of the mouse data set
+Q_mouse_AD <- mouse_Qm_AD_pr$x
+# Extract PC1 to PCs that represent 90% explained variability
+Q_mouse_AD <-  Q_mouse_AD[, c(1:PC_80_val_AD)]
+
+# Keep row names as the gene identifiers
+rownames(Q_mouse_AD) <- Xmousedat_AD_TCR_t$GeneID
+# Preparation of the mouse matrix
+Q_mouse_AD <- as.matrix(Q_mouse_AD)
+# Rename the columns for the AD Q_mouse
+colnames(Q_mouse_AD)[1] <- "AD_PC1"
+colnames(Q_mouse_AD)[2] <- "AD_PC2"
+colnames(Q_mouse_AD)[3] <- "AD_PC3"
+colnames(Q_mouse_AD)[4] <- "AD_PC4"
+colnames(Q_mouse_AD)[5] <- "AD_PC5"
+```
+
+### 4.1.2 Variance for T2D Mouse PCs
+```{r Filtering T2D PCs to 80% Explained Variance}
+# Q_mouse data matrix preparation 
+# Remove the identifiers and keep the genes based on each mouse data
+Xmousedat_T2D_TCR <- Xmousedat_T2D[c(6:ncol(Xmousedat_T2D))]
+# Take the transpose of the data frame
+Xmousedat_T2D_TCR_t <- t(Xmousedat_T2D_TCR)
+# Reset as a data frame
+Xmousedat_T2D_TCR_t <- as.data.frame(Xmousedat_T2D_TCR_t)
+# Move the row names into the first column
+Xmousedat_T2D_TCR_t <- tibble::rownames_to_column(Xmousedat_T2D_TCR_t)
+colnames(Xmousedat_T2D_TCR_t)[1] <- "GeneID"
+# Prepare the principal component analysis
+mouse_Qm_T2D_pr <- prcomp(Xmousedat_T2D_TCR_t[c(2:(ncol(Xmousedat_T2D_TCR_t)))], center = TRUE, scale = FALSE)
+
+# Prepare the Scree Plot for Mouse HIP Data
+screeplot(mouse_Qm_T2D_pr, type = "l", npcs = 6, main = "Scree Plot of the 6PCs")
+abline(h = 1, col="red", lty=20)
+legend("topright", legend=c("Eigenvalue = 1"),
+       col=c("red"), lty=5, cex=0.6)
+#svg('CumVarPlot_T2D.svg', width = 4, height = 4)
+# Cumulative Variance Plot for 80% Variance
+cumVar_T2D <- cumsum(mouse_Qm_T2D_pr$sdev^2 / sum(mouse_Qm_T2D_pr$sdev^2))
+plot(cumVar_T2D[0:6], xlab = "Principle Component #", ylab = "Amount of Explained Variance", main = "Cumulative Variance Plot")
+abline(v = 5, col="blue", lty=5)
+abline(h = 0.80, col="blue", lty=5)
+legend("bottomright", legend=c("Cut-off @ PC5"),
+       col=c("blue"), lty=5, cex=0.6)
+#dev.off()
+# Using the which() command to determine the PC# greater than or equal to 90%
+print(c("Princial components at 80% variance is:", which(cumVar_T2D >= 0.80)[1]))
+PC_80_val_T2D <- as.numeric(which(cumVar_T2D >= 0.80)[1])
+
+# Collect the PCs of the mouse data set
+Q_mouse_T2D <- mouse_Qm_T2D_pr$x
+# Extract PC1 to PCs that represent 90% explained variability
+Q_mouse_T2D <-  Q_mouse_T2D[, c(1:PC_80_val_T2D)]
+
+# Keep row names as the gene identifiers
+rownames(Q_mouse_T2D) <- Xmousedat_T2D_TCR_t$GeneID
+# Preparation of the mouse matrix
+Q_mouse_T2D <- as.matrix(Q_mouse_T2D)
+# Rename the columns for the T2D Q_mouse
+colnames(Q_mouse_T2D)[1] <- "T2D_PC1"
+colnames(Q_mouse_T2D)[2] <- "T2D_PC2"
+colnames(Q_mouse_T2D)[3] <- "T2D_PC3"
+colnames(Q_mouse_T2D)[4] <- "T2D_PC4"
+colnames(Q_mouse_T2D)[5] <- "T2D_PC5"
+```
+
+### 4.1.3 Variance for Both (AD/T2D) Mouse PCs
+```{r Filtering Both PCs to 80% Explained Variance}
+# Q_mouse data matrix preparation 
+# Remove the identifiers and keep the genes based on each mouse data
+Xmousedat_Both_TCR <- Xmousedat_Both[c(6:ncol(Xmousedat_Both))]
+# Take the transpose of the data frame
+Xmousedat_Both_TCR_t <- t(Xmousedat_Both_TCR)
+# Reset as a data frame
+Xmousedat_Both_TCR_t <- as.data.frame(Xmousedat_Both_TCR_t)
+# Move the row names into the first column
+Xmousedat_Both_TCR_t <- tibble::rownames_to_column(Xmousedat_Both_TCR_t)
+colnames(Xmousedat_Both_TCR_t)[1] <- "GeneID"
+# Prepare the principal component analysis
+mouse_Qm_Both_pr <- prcomp(Xmousedat_Both_TCR_t[c(2:(ncol(Xmousedat_Both_TCR_t)))], center = TRUE, scale = FALSE)
+
+# Prepare the Scree Plot for Mouse HIP Data
+screeplot(mouse_Qm_Both_pr, type = "l", npcs = 6, main = "Scree Plot of the 6PCs")
+abline(h = 1, col="red", lty=20)
+legend("topright", legend=c("Eigenvalue = 1"),
+       col=c("red"), lty=5, cex=0.6)
+#svg('CumVarPlot_Both.svg', width = 4, height = 4)
+# Cumulative Variance Plot for 80% Variance
+cumVar_Both <- cumsum(mouse_Qm_Both_pr$sdev^2 / sum(mouse_Qm_Both_pr$sdev^2))
+plot(cumVar_Both[0:6], xlab = "Principle Component #", ylab = "Amount of Explained Variance", main = "Cumulative Variance Plot")
+abline(v = 5, col="blue", lty=5)
+abline(h = 0.80, col="blue", lty=5)
+legend("bottomright", legend=c("Cut-off @ PC5"),
+       col=c("blue"), lty=5, cex=0.6)
+#dev.off()
+# Using the which() command to determine the PC# greater than or equal to 90%
+print(c("Princial components at 80% variance is:", which(cumVar_Both >= 0.80)[1]))
+PC_80_val_Both <- as.numeric(which(cumVar_Both >= 0.80)[1])
+
+# Collect the PCs of the mouse data set
+Q_mouse_Both <- mouse_Qm_Both_pr$x
+# Extract PC1 to PCs that represent 90% explained variability
+Q_mouse_Both <-  Q_mouse_Both[, c(1:PC_80_val_Both)]
+
+# Keep row names as the gene identifiers
+rownames(Q_mouse_Both) <- Xmousedat_Both_TCR_t$GeneID
+# Preparation of the mouse matrix
+Q_mouse_Both <- as.matrix(Q_mouse_Both)
+# Rename the columns for the Both Q_mouse
+colnames(Q_mouse_Both)[1] <- "Both_PC1"
+colnames(Q_mouse_Both)[2] <- "Both_PC2"
+colnames(Q_mouse_Both)[3] <- "Both_PC3"
+colnames(Q_mouse_Both)[4] <- "Both_PC4"
+colnames(Q_mouse_Both)[5] <- "Both_PC5"
+```
+
+```{r Percent Variance Explained Plots, fig.width=3, fig.height=4}
+# Move the row names to be in the first column
+CumVarMousePCs <- as.data.frame(var_exp_mouseAD)
+CumVarMousePCs <- tibble::rownames_to_column(CumVarMousePCs)
+colnames(CumVarMousePCs)[1] <- "PC"
+# Combine the other data sets 
+CumVarMousePCs <- cbind(CumVarMousePCs, var_exp_mouseT2D, var_exp_mouseBoth)
+# Rename the column for the different mouse groups
+colnames(CumVarMousePCs)[2] <- "AD_PCs"
+colnames(CumVarMousePCs)[3] <- "T2D_PCs"
+colnames(CumVarMousePCs)[4] <- "Both_PCs"
+# Remove the PC that is not included in the model (80% Var Exp)
+CumVarMousePCs <- CumVarMousePCs[-6,]
+
+# Percent variance explained plot for AD mouse group
+ggplot(data=CumVarMousePCs, aes(x=PC, y=AD_PCs)) +
+  geom_bar(stat="identity", fill="#d73027", color = "black") +
+  ylab("Percent Variance Explained") +
+   coord_cartesian(ylim = c(0, 30)) +
+  theme_classic() + scale_y_continuous(expand = expansion(mult = c(0, 0.01)))+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+# Percent variance explained plot for T2D mouse group
+ggplot(data=CumVarMousePCs, aes(x=PC, y=T2D_PCs)) +
+  geom_bar(stat="identity", fill="paleturquoise", color = "black") +
+  ylab("Percent Variance Explained") +
+   coord_cartesian(ylim = c(0, 30)) +
+  theme_classic() + scale_y_continuous(expand = expansion(mult = c(0, 0.01)))+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+# Percent variance explained plot for Both mouse group
+ggplot(data=CumVarMousePCs, aes(x=PC, y=Both_PCs)) +
+  geom_bar(stat="identity", fill="#fdae61", color = "black") +
+  ylab("Percent Variance Explained") +
+   coord_cartesian(ylim = c(0, 30)) +
+  theme_classic() + scale_y_continuous(expand = expansion(mult = c(0, 0.01)))+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+```
+
+## 4.2 Translatable Components Regressiom (TransComp-R)
+```{r TransComp-R Model}
+# Create Q_mouse to combine all of AD, T2D, and Both PCs
+Q_mouse <- cbind(Q_mouse_AD, Q_mouse_T2D, Q_mouse_Both)
+
+# X_human data matrix preparation
+# Remove the identifiers and keep the genes based on each mouse data
+Xhuman_TCR <- Xhumandat[c(9:ncol(Xhumandat))]
+# Rename the row names as the subject ID
+rownames(Xhuman_TCR) <- Xhumandat$SampleID
+# Convert the X_human data into a matrix form
+X_human <- as.matrix(Xhuman_TCR)
+
+# Matrix multiplication of the human and mouse data set
+Pm_h <- X_human %*% Q_mouse
+# Make the mouse-human matrix into a data frame
+Pm_h_DF <- as.data.frame(Pm_h)
+# Move the row names into the first column
+Pm_h_DF <- tibble::rownames_to_column(Pm_h_DF)
+colnames(Pm_h_DF)[1] <- "SampleID"
+# Make the Mouse to human TransComp-R data with human demographic information
+Mouse_Human_TCR <- Xhumandat[c(1:8)] %>% inner_join(Pm_h_DF, by = 'SampleID', copy = TRUE)
+
+# Rename the condition categories into numerical values for the regression analysis
+Mouse_Human_TCR_reg <- Mouse_Human_TCR %>%
+  mutate(Condition = case_when(
+    Condition == "AD" ~ 1,  # Replace "AD" with 1
+    Condition == "Control" ~ 0,  # Replace "C" with 0
+  ))
+# Rename the male and female sex categories into numerical values for the regression analysis
+Mouse_Human_TCR_reg <- Mouse_Human_TCR_reg %>%
+  mutate(Sex = case_when(
+    Sex == "M" ~ -1,  # Replace "male" with -1
+    Sex == "F" ~ 1,  # Replace "female" with 1
+  ))
+```
+
+# 5 LASSO Variable Selection
+## 5.1 Model Training with NO interactions
+```{r Cross Validaition with No Interactions}
+set.seed(1)
+
+# Number of repeats
+num_repeats <- 100
+# Initialize list to store coefficients
+coefs_list <- list()
+
+# Repeat the process
+for (i in 1:num_repeats) {
+    # Define response variable
+    y_noint <- Mouse_Human_TCR_reg$Condition
+    # Define matrix of predictor variables
+    x_noint <- data.matrix(Mouse_Human_TCR_reg[c(9:ncol(Mouse_Human_TCR_reg))])
+    # Perform 5-fold cross-validation to find optimal lambda value
+    cv_model_noint <- cv.glmnet(x_noint, y_noint, alpha = 1, grouped = FALSE, family = "binomial", type.measure = "mse", nfolds = 5, maxit = 1000000)
+    # Find optimal lambda value that minimizes test MSE
+    best_lambda_noint <- cv_model_noint$lambda.min
+    #cat(sprintf("Repeat %d: The lambda value is: %f\n", i, best_lambda_noint))
+    # Find coefficients of best model
+    best_model_noint <- glmnet(x_noint, y_noint, alpha = 1, lambda = best_lambda_noint, nfolds = 5, family = "binomial", maxit = 1000000)
+    # Store coefficients for each repetition of the model
+    coefs_list[[i]] <- as.vector(coef(best_model_noint))
+}
+
+# Convert coefficients list to data frame
+coefs_lasso <- as.data.frame(do.call(cbind, coefs_list))
+# Replace the column name to represent each iteration re-run of the LASSO model
+colnames(coefs_lasso) <- sub("^V", "Iter", colnames(coefs_lasso))
+# Count non-zero coefficients in each row
+coefs_lasso$non_zero_count <- rowSums(coefs_lasso != 0)
+# Mark as TRUE in a new column if greater than 50 non-zero counts
+coefs_lasso$variable_selection <- coefs_lasso$non_zero_count > 50
+# Include row names of the coefficients
+rownames(coefs_lasso) <- c("Intercept", colnames(x_noint))
+# Pull out the count for number of non-zero coefficients
+count_lasso_noint <- coefs_lasso[c("non_zero_count","variable_selection")]
+# Move the row names to be in the first column
+count_lasso_noint <- tibble::rownames_to_column(count_lasso_noint)
+colnames(count_lasso_noint)[1] <- "Variables"
+
+# Reorder the row names
+desired_order <- c("AD_PC1", "AD_PC2", "AD_PC3", "AD_PC4", "AD_PC5",
+                   "T2D_PC1", "T2D_PC2", "T2D_PC3", "T2D_PC4", "T2D_PC5",
+                   "Both_PC1", "Both_PC2", "Both_PC3", "Both_PC4", "Both_PC5")
+
+count_lasso_noint$Variables <- factor(count_lasso_noint$Variables, levels = count_lasso_noint$Var)
+
+# Remove the intercept from the bar graph
+count_lasso_noint_plot <- count_lasso_noint[-1, ]
+# Create color vector based on variable_selection
+colors <- ifelse(count_lasso_noint$variable_selection == TRUE, "#7D7D7D","orange")
+
+# Create the bar plot
+ggplot(count_lasso_noint_plot, aes(x = reorder(Variables, -match(Variables, desired_order)), y = non_zero_count, fill = variable_selection)) +
+  geom_bar(stat = "identity", color = "black", linewidth = 0.2) +
+  scale_fill_manual(values = colors) +
+  labs(x = "Variables",
+       y = "Non-Zero Count") +
+  theme(axis.text.y = element_text(size = 12)) +
+  coord_flip() + theme_classic() + geom_hline(yintercept = 50, linetype = "dashed", color = "black") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.01)))  # Adjust the limits of y-axis
+```
+
+```{r Logisitic Regression of the Selected PCs}
+# Model with all of the principal components in a regression model
+model_list <- glm(Condition ~ AD_PC5 + T2D_PC2 + T2D_PC5 + Both_PC3, data = Mouse_Human_TCR_reg, family = binomial, maxit=100)
+summary(model_list)
+# Model with all of the principal components in a regression model
+model_list <- glm(Condition ~ AD_PC5  , data = Mouse_Human_TCR_reg, family = binomial, maxit=100)
+summary(model_list)
+
+model_list <- glm(Condition ~  T2D_PC2 , data = Mouse_Human_TCR_reg, family = binomial, maxit=100)
+summary(model_list)
+
+model_list <- glm(Condition ~ T2D_PC5  , data = Mouse_Human_TCR_reg, family = binomial, maxit=100)
+summary(model_list)
+
+model_list <- glm(Condition ~ T2D_PC5, data = Mouse_Human_TCR_reg, family = binomial, maxit=100)
+summary(model_list)
+
+model_list <- glm(Condition ~ Both_PC3, data = Mouse_Human_TCR_reg, family = binomial, maxit=100)
+summary(model_list)
+```
+
+## 5.2 Model Training with SEX interactions
+```{r Cross Validaition with Sex Interactions}
+set.seed(1)
+# Number of repeats
+num_repeats <- 100
+# Initialize list to store coefficients
+coefs_list_sexint <- list()
+
+# Repeat the process
+for (i in 1:num_repeats) {
+    # Define response variable
+    y_sexint <- Mouse_Human_TCR_reg$Condition
+    # Define matrix of predictor variables
+    x_sexint <- data.matrix(Mouse_Human_TCR_reg[c(2,9:ncol(Mouse_Human_TCR_reg))])
+    # Perform 5-fold cross-validation to find optimal lambda value
+    cv_model_sexint <- cv.glmnet(x_sexint, y_sexint, alpha = 1, grouped = FALSE, family = "binomial", type.measure = "mse", nfolds = 5, maxit = 1000000)
+    # Find optimal lambda value that minimizes test MSE
+    best_lambda_sexint <- cv_model_sexint$lambda.min
+    #cat(sprintf("Repeat %d: The lambda value is: %f\n", i, best_lambda_sexint))
+    # Find coefficients of best model
+    best_model_sexint <- glmnet(x_sexint, y_sexint, alpha = 1, lambda = best_lambda_sexint, nfolds = 5, family = "binomial", maxit = 1000000)
+    # Store coefficients for each repetition of the model
+    coefs_list_sexint[[i]] <- as.vector(coef(best_model_sexint))
+}
+
+# Convert coefficients list to data frame
+coefs_lasso_sexint <- as.data.frame(do.call(cbind, coefs_list_sexint))
+# Replace the column name to represent each iteration re-run of the LASSO model
+colnames(coefs_lasso_sexint) <- sub("^V", "Iter", colnames(coefs_lasso_sexint))
+# Count non-zero coefficients in each row
+coefs_lasso_sexint$non_zero_count <- rowSums(coefs_lasso_sexint != 0)
+# Mark as TRUE in a new column if greater than 50 non-zero counts
+coefs_lasso_sexint$variable_selection <- coefs_lasso_sexint$non_zero_count > 50
+# Include row names of the coefficients
+rownames(coefs_lasso_sexint) <- c("Intercept", colnames(x_sexint))
+# Pull out the count for number of non-zero coefficients
+count_lasso_sexint <- coefs_lasso_sexint[c("non_zero_count","variable_selection")]
+# Move the row names to be in the first column
+count_lasso_sexint <- tibble::rownames_to_column(count_lasso_sexint)
+colnames(count_lasso_sexint)[1] <- "Variables"
+
+# Reorder the row names
+desired_order <- c("Sex", "AD_PC1", "AD_PC2", "AD_PC3", "AD_PC4", "AD_PC5",
+                   "T2D_PC1", "T2D_PC2", "T2D_PC3", "T2D_PC4", "T2D_PC5",
+                   "Both_PC1", "Both_PC2", "Both_PC3", "Both_PC4", "Both_PC5")
+
+count_lasso_sexint$Variables <- factor(count_lasso_sexint$Variables, levels = count_lasso_sexint$Var)
+
+# Remove the intercept from the bar graph
+count_lasso_sexint_plot <- count_lasso_sexint[-1, ]
+# Create color vector based on variable_selection
+colors <- ifelse(count_lasso_sexint$variable_selection == TRUE, "#7D7D7D","orange")
+
+# Create the bar plot
+ggplot(count_lasso_sexint_plot, aes(x = reorder(Variables, -match(Variables, desired_order)), y = non_zero_count, fill = variable_selection)) +
+  geom_bar(stat = "identity", color = "black", linewidth = 0.2) +
+  scale_fill_manual(values = colors) +
+  labs(x = "Variables",
+       y = "Non-Zero Count") +
+  theme(axis.text.y = element_text(size = 12)) +
+  coord_flip() + theme_classic() + geom_hline(yintercept = 50, linetype = "dashed", color = "black") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.01)))  # Adjust the limits of y-axis
+```
+
+```{r Logisitic Regression of the Selected PCs}
+# Model with all of the principal components in a regression model
+model_list <- glm(Condition ~  Sex + T2D_PC2 + T2D_PC3  + Both_PC3, data = Mouse_Human_TCR_reg, family = binomial, maxit=100)
+summary(model_list)
+
+model_list <- glm(Condition ~ T2D_PC2, data = Mouse_Human_TCR_reg, family = binomial, maxit=100)
+summary(model_list)
+
+model_list <- glm(Condition ~ T2D_PC3, data = Mouse_Human_TCR_reg, family = binomial, maxit=100)
+summary(model_list)
+
+model_list <- glm(Condition ~ Both_PC3, data = Mouse_Human_TCR_reg, family = binomial, maxit=100)
+summary(model_list)
+```
+
+### 5.3 Model Training with Age interactions
+```{r Cross Validaition with Age Interactions}
+set.seed(1)
+# Number of repeats
+num_repeats <- 100
+# Initialize list to store coefficients
+coefs_list_ageint <- list()
+
+# Repeat the process
+for (i in 1:num_repeats) {
+    # Define response variable
+    y_ageint <- Mouse_Human_TCR_reg$Condition
+    # Define matrix of predictor variables
+    x_ageint <- data.matrix(Mouse_Human_TCR_reg[c(3,9:ncol(Mouse_Human_TCR_reg))])
+    # Perform 5-fold cross-validation to find optimal lambda value
+    cv_model_ageint <- cv.glmnet(x_ageint, y_ageint, alpha = 1, grouped = FALSE, family = "binomial", type.measure = "mse", nfolds = 5, maxit = 1000000)
+    # Find optimal lambda value that minimizes test MSE
+    best_lambda_ageint <- cv_model_ageint$lambda.min
+    #cat(sprintf("Repeat %d: The lambda value is: %f\n", i, best_lambda_ageint))
+    # Find coefficients of best model
+    best_model_ageint <- glmnet(x_ageint, y_ageint, alpha = 1, lambda = best_lambda_ageint, nfolds = 5, family = "binomial", maxit = 1000000)
+    # Store coefficients for each repetition of the model
+    coefs_list_ageint[[i]] <- as.vector(coef(best_model_ageint))
+}
+
+# Convert coefficients list to data frame
+coefs_lasso_ageint <- as.data.frame(do.call(cbind, coefs_list_ageint))
+# Replace the column name to represent each iteration re-run of the LASSO model
+colnames(coefs_lasso_ageint) <- sub("^V", "Iter", colnames(coefs_lasso_ageint))
+# Count non-zero coefficients in each row
+coefs_lasso_ageint$non_zero_count <- rowSums(coefs_lasso_ageint != 0)
+# Mark as TRUE in a new column if greater than 50 non-zero counts
+coefs_lasso_ageint$variable_selection <- coefs_lasso_ageint$non_zero_count > 50
+# Include row names of the coefficients
+rownames(coefs_lasso_ageint) <- c("Intercept", colnames(x_ageint))
+# Pull out the count for number of non-zero coefficients
+count_lasso_ageint <- coefs_lasso_ageint[c("non_zero_count","variable_selection")]
+# Move the row names to be in the first column
+count_lasso_ageint <- tibble::rownames_to_column(count_lasso_ageint)
+colnames(count_lasso_ageint)[1] <- "Variables"
+
+# Reorder the row names
+desired_order <- c("Age", "AD_PC1", "AD_PC2", "AD_PC3", "AD_PC4", "AD_PC5",
+                   "T2D_PC1", "T2D_PC2", "T2D_PC3", "T2D_PC4", "T2D_PC5",
+                   "Both_PC1", "Both_PC2", "Both_PC3", "Both_PC4", "Both_PC5")
+
+count_lasso_ageint$Variables <- factor(count_lasso_ageint$Variables, levels = count_lasso_ageint$Var)
+
+# Remove the intercept from the bar graph
+count_lasso_ageint_plot <- count_lasso_ageint[-1, ]
+
+# Create color vector based on variable_selection
+colors <- ifelse(count_lasso_ageint$variable_selection == TRUE, "#7D7D7D","orange")
+
+# Create the bar plot
+ggplot(count_lasso_ageint_plot, aes(x = reorder(Variables, -match(Variables, desired_order)), y = non_zero_count, fill = variable_selection)) +
+  geom_bar(stat = "identity", color = "black", linewidth = 0.2) +
+  scale_fill_manual(values = colors) +
+  labs(x = "Variables",
+       y = "Non-Zero Count") +
+  theme(axis.text.y = element_text(size = 12)) +
+  coord_flip() + theme_classic() + geom_hline(yintercept = 50, linetype = "dashed", color = "black") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.01)))  # Adjust the limits of y-axis
+```
+
+```{r Logisitic Regression of the Selected PCs}
+# Model with all of the principal components in a regression model
+model_list <- glm(Condition ~  Age + T2D_PC2 + T2D_PC3 + Both_PC3, data = Mouse_Human_TCR_reg, family = binomial, maxit=100)
+summary(model_list)
+
+model_list <- glm(Condition ~ T2D_PC2, data = Mouse_Human_TCR_reg, family = binomial, maxit=100)
+summary(model_list)
+
+model_list <- glm(Condition ~ T2D_PC3, data = Mouse_Human_TCR_reg, family = binomial, maxit=100)
+summary(model_list)
+
+model_list <- glm(Condition ~ Both_PC3, data = Mouse_Human_TCR_reg, family = binomial, maxit=100)
+summary(model_list)
+```
+
+## 5.4 Model Training with SEX AND AGE interactions
+```{r Cross Validaition with Sex and Age Interactions}
+set.seed(1)
+# Number of repeats
+num_repeats <- 100
+# Initialize list to store coefficients
+coefs_list_sexageint <- list()
+
+# Repeat the process
+for (i in 1:num_repeats) {
+    # Define response variable
+    y_sexageint <- Mouse_Human_TCR_reg$Condition
+    # Define matrix of predictor variables
+    x_sexageint <- data.matrix(Mouse_Human_TCR_reg[c(2:3,9:ncol(Mouse_Human_TCR_reg))])
+    # Perform 5-fold cross-validation to find optimal lambda value
+    cv_model_sexageint <- cv.glmnet(x_sexageint, y_sexageint, alpha = 1, grouped = FALSE, family = "binomial", type.measure = "mse", nfolds = 5, maxit = 1000000)
+    # Find optimal lambda value that minimizes test MSE
+    best_lambda_sexageint <- cv_model_sexageint$lambda.min
+    #cat(sprintf("Repeat %d: The lambda value is: %f\n", i, best_lambda_sexageint))
+    # Find coefficients of best model
+    best_model_sexageint <- glmnet(x_sexageint, y_sexageint, alpha = 1, lambda = best_lambda_sexageint, nfolds = 5, family = "binomial", maxit = 1000000)
+    # Store coefficients for each repetition of the model
+    coefs_list_sexageint[[i]] <- as.vector(coef(best_model_sexageint))
+}
+
+# Convert coefficients list to data frame
+coefs_lasso_sexageint <- as.data.frame(do.call(cbind, coefs_list_sexageint))
+# Replace the column name to represent each iteration re-run of the LASSO model
+colnames(coefs_lasso_sexageint) <- sub("^V", "Iter", colnames(coefs_lasso_sexageint))
+# Count non-zero coefficients in each row
+coefs_lasso_sexageint$non_zero_count <- rowSums(coefs_lasso_sexageint != 0)
+# Mark as TRUE in a new column if greater than 50 non-zero counts
+coefs_lasso_sexageint$variable_selection <- coefs_lasso_sexageint$non_zero_count > 50
+# Include row names of the coefficients
+rownames(coefs_lasso_sexageint) <- c("Intercept", colnames(x_sexageint))
+# Pull out the count for number of non-zero coefficients
+count_lasso_sexageint <- coefs_lasso_sexageint[c("non_zero_count","variable_selection")]
+# Move the row names to be in the first column
+count_lasso_sexageint <- tibble::rownames_to_column(count_lasso_sexageint)
+colnames(count_lasso_sexageint)[1] <- "Variables"
+
+# Reorder the row names
+desired_order <- c("Sex", "Age", "AD_PC1", "AD_PC2", "AD_PC3", "AD_PC4", "AD_PC5",
+                   "T2D_PC1", "T2D_PC2", "T2D_PC3", "T2D_PC4", "T2D_PC5",
+                   "Both_PC1", "Both_PC2", "Both_PC3", "Both_PC4", "Both_PC5")
+
+count_lasso_sexageint$Variables <- factor(count_lasso_sexageint$Variables, levels = count_lasso_sexageint$Var)
+
+# Remove the intercept from the bar graph
+count_lasso_sexageint_plot <- count_lasso_sexageint[-1, ]
+
+# Create color vector based on variable_selection
+colors <- ifelse(count_lasso_sexageint$variable_selection == TRUE, "#7D7D7D","orange")
+
+# Create the bar plot
+ggplot(count_lasso_sexageint_plot, aes(x = reorder(Variables, -match(Variables, desired_order)), y = non_zero_count, fill = variable_selection)) +
+  geom_bar(stat = "identity", color = "black", linewidth = 0.2) +
+  scale_fill_manual(values = colors) +
+  labs(x = "Variables",
+       y = "Non-Zero Count") +
+  theme(axis.text.y = element_text(size = 12)) +
+  coord_flip() + theme_classic() + geom_hline(yintercept = 50, linetype = "dashed", color = "black") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.01)))  # Adjust the limits of y-axis
+```
+
+```{r Logisitic Regression of the Selected PCs}
+# Model with all of the principal components in a regression model
+model_list <- glm(Condition ~ T2D_PC2 + T2D_PC3 + Both_PC3, data = Mouse_Human_TCR_reg, family = binomial, maxit=100)
+summary(model_list)
+
+model_list <- glm(Condition ~ T2D_PC2, data = Mouse_Human_TCR_reg, family = binomial, maxit=100)
+summary(model_list)
+
+model_list <- glm(Condition ~ T2D_PC3, data = Mouse_Human_TCR_reg, family = binomial, maxit=100)
+summary(model_list)
+
+model_list <- glm(Condition ~ Both_PC3, data = Mouse_Human_TCR_reg, family = binomial, maxit=100)
+summary(model_list)
+```
+
+## 5.5 Plot for All Selected Variables
+```{r Plot for All Selected Variables, warning=FALSE, fig.height=4.5, fig.width=2}
+# Merge the data frames together, replace any missing data with NA due to length differences (Age and Sex interactions)
+merged_lasso_counts <- Reduce(function(x, y) merge(x, y, by = "Variables", all = TRUE), list(count_lasso_noint, count_lasso_sexint, count_lasso_ageint, count_lasso_sexageint))
+# Rename each respective column based on the above order of data entry
+colnames(merged_lasso_counts)[2] <- " NoInt_Count"
+colnames(merged_lasso_counts)[3] <- " NoInt_Selection"
+colnames(merged_lasso_counts)[4] <- " SexInt_Count"
+colnames(merged_lasso_counts)[5] <- " SexInt_Selection"
+colnames(merged_lasso_counts)[6] <- " AgeInt_Count"
+colnames(merged_lasso_counts)[7] <- " AgeInt_Selection"
+colnames(merged_lasso_counts)[8] <- " SexAgeInt_Count"
+colnames(merged_lasso_counts)[9] <- " SexAgeInt_Selection"
+# Re-prepare the desired list for ordering
+desired_order <- c("Intercept", "Sex", "Age", "AD_PC1", "AD_PC2", "AD_PC3", "AD_PC4", "AD_PC5",
+                   "T2D_PC1", "T2D_PC2", "T2D_PC3", "T2D_PC4", "T2D_PC5",
+                   "Both_PC1", "Both_PC2", "Both_PC3", "Both_PC4", "Both_PC5")
+# Rearrange the rows based on the desired order
+indices <- match(desired_order, merged_lasso_counts$Variable)
+merged_lasso_counts <- merged_lasso_counts[indices, ]
+# Replace NA values with 0 or FALSE depending on the column (FALSE if in Selection, 0 if in Count)
+merged_lasso_counts <- merged_lasso_counts |> mutate(across(.cols = ends_with("Selection"),
+                                    .fns = ~replace(., is.na(.),"FALSE")))
+merged_lasso_counts <- merged_lasso_counts |> mutate(across(.cols = ends_with("Count"),
+                                    .fns = ~replace(., is.na(.),0)))
+
+# Replace the FALSE/TRUE variables with 1/0 respectively for a comparative heatmap comparison
+merged_lasso_counts <- merged_lasso_counts |>
+  mutate(across(.cols = ends_with("Selection"),
+                .fns = ~ifelse(. == TRUE, 1, ifelse(. == FALSE, 0, .))))
+
+# Prepare to plot as EPS file
+#setEPS()
+#postscript(file = "heatmapfig.eps", width = 2, height = 4.5)
+
+# PLOT SELECTED VARIABLES FROM LASSO
+# Removing unnecessary columns not needed for analysis
+matrix_merged_lasso_counts <- subset(merged_lasso_counts, select = -c(1,2,4,6,8))
+# Preparing to make row names
+rownames(matrix_merged_lasso_counts) <- merged_lasso_counts$Variables
+# Changing name for columns to be legible
+names(matrix_merged_lasso_counts)[1] <- 'None'
+names(matrix_merged_lasso_counts)[2] <- 'Sex'
+names(matrix_merged_lasso_counts)[3] <- 'Age'
+names(matrix_merged_lasso_counts)[4] <- 'Sex and Age'
+
+# Ensure all variables are numeric
+for (i in 1:ncol(matrix_merged_lasso_counts)) {
+  matrix_merged_lasso_counts[,i] <- as.numeric(matrix_merged_lasso_counts[,i])
+}
+
+# Format as a matrix
+matrix_merged_lasso_counts_map <- as.matrix(matrix_merged_lasso_counts)
+# Remove the intercept row for the heatmap
+matrix_merged_lasso_counts_map <- matrix_merged_lasso_counts_map[-1,]
+
+# Generate the heat map
+heatmapfig <- pheatmap(matrix_merged_lasso_counts_map,
+  cluster_rows = F,
+  cluster_cols = F,
+  color = colorRampPalette(c("white", "orange"))(10000),
+  border_color = "black",
+  breaks = seq(0, 1, length.out = 10000),
+  angle_col = 90,
+  fontsize_col = 9,
+  fontsize_row = 9)
+
+#dev.off()
+
+# PLOT FREQUENCY OF SELECTED VARIABLES FROM LASSO
+# Removing unnecessary columns not needed for analysis
+matrix_merged_lasso_counts <- subset(merged_lasso_counts, select = -c(1,3,5,7,9))
+# Preparing to make row names
+rownames(matrix_merged_lasso_counts) <- merged_lasso_counts$Variables
+# Changing name for columns to be legible
+names(matrix_merged_lasso_counts)[1] <- 'None'
+names(matrix_merged_lasso_counts)[2] <- 'Sex'
+names(matrix_merged_lasso_counts)[3] <- 'Age'
+names(matrix_merged_lasso_counts)[4] <- 'Sex and Age'
+
+# Ensure all variables are numeric
+for (i in 1:ncol(matrix_merged_lasso_counts)) {
+  matrix_merged_lasso_counts[,i] <- as.numeric(matrix_merged_lasso_counts[,i])
+}
+
+# Format as a matrix
+matrix_merged_lasso_counts_map <- as.matrix(matrix_merged_lasso_counts)
+# Remove the intercept row for the heatmap
+matrix_merged_lasso_counts_map <- matrix_merged_lasso_counts_map[-1,]
+
+#svg('LASSO_Selected.svg', width = 2, height = 4)
+# Generate the heat map
+heatmapfig <- pheatmap(matrix_merged_lasso_counts_map,
+  cluster_rows = F,
+  cluster_cols = F,
+  color = colorRampPalette(c("white", "orange"))(10000),
+  border_color = "black",
+  breaks = seq(0, 100, length.out = 10000),
+  angle_col = 90,
+  fontsize_col = 9,
+  fontsize_row = 9)
+#dev.off()
+```
+
+## 5.6 Plots of Selected Mouse PCs From TransComp-R
+```{r T2D_PC2 and T2D_PC3}
+# Create ggplot of the different PCs from TransComp-R
+g2 <- ggplot(Mouse_Human_TCR_reg, aes(x = T2D_PC3, y = T2D_PC2, color = Condition)) + 
+  geom_point(shape = 16, size = 2.5, color = "black") + 
+  geom_point(size = 2) +
+  scale_color_manual(values = c("#4575b4","#d73027")) +
+  theme(legend.position = 'right') +
+  coord_equal() 
+
+# Factorize the Condition (AD vs Control)
+g2$data$Condition <- as.factor(g2$data$Condition)
+
+# Plot the figure
+g2 +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black") +
+  theme_bw() +
+  theme(
+    panel.grid.major = element_blank(),  # Remove major gridlines
+    panel.grid.minor = element_blank()   # Remove minor gridlines
+  )
+```
+
+```{r Both_PC3 and T2D_PC2, fig.width=4, fig.height=4}
+# Create ggplot of the different PCs from TransComp-R
+g2 <- ggplot(Mouse_Human_TCR_reg, aes(x = Both_PC3, y = T2D_PC2, color = Condition)) + 
+  geom_point(shape = 16, size = 2.5, color = "black") + 
+  geom_point(size = 2) +
+  scale_color_manual(values = c("#4575b4","#d73027")) +
+  theme(legend.position = 'right') +
+  coord_equal() 
+
+# Factorize the Condition (AD vs Control)
+g2$data$Condition <- as.factor(g2$data$Condition)
+
+#svg('Both_PC3_T2D_PC2.svg', width = 4, height = 4)
+# Plot the figure
+g2 +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black") +
+  theme_bw() +
+  theme(
+    panel.grid.major = element_blank(),  # Remove major gridlines
+    panel.grid.minor = element_blank(),
+    legend.position = "none"# Remove minor gridlines
+  )
+#dev.off()
+```
+
+```{r Both_PC3 and T2D_PC3, fig.width=4, fig.height=4}
+# Create ggplot of the different PCs from TransComp-R
+g2 <- ggplot(Mouse_Human_TCR_reg, aes(x = T2D_PC3, y = Both_PC3, color = Condition)) + 
+  geom_point(shape = 16, size = 2.5, color = "black") + 
+  geom_point(size = 2) +
+  scale_color_manual(values = c("#4575b4","#d73027")) +
+  theme(legend.position = 'right') +
+  coord_equal() 
+
+# Factorize the Condition (AD vs Control)
+g2$data$Condition <- as.factor(g2$data$Condition)
+
+#svg('Both_PC3_T2D_PC3.svg', width = 4, height = 4)
+# Plot the figure
+g2 +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black") +
+  theme_bw() +
+  theme(
+    panel.grid.major = element_blank(),  # Remove major gridlines
+    panel.grid.minor = element_blank(),
+    legend.position = "none"# Remove minor gridlines
+  )
+#dev.off()
+```
+
+## 5.7 Variance Explained of Mouse in Human Data Scatter Plots
+```{r Mouse Variance Explained in Human}
+# Isolate for the human dataset
+human_data_matrix <- Xhumandat[,-c(1:7)]
+rownames(human_data_matrix) <- human_data_matrix$SampleID
+human_data_matrix <- human_data_matrix[,-1]
+# Ensure all values are numeric
+for (col in names(human_data_matrix)) {
+  human_data_matrix[[col]] <- as.numeric(human_data_matrix[[col]])
+}
+# Convert back to matrix format
+human_data_matrix <- as.matrix(human_data_matrix)
+
+# AD Calculation
+# Get mouse feature loadings from principal component analysis
+AD_mouse_loading <- as.matrix(Q_mouse[,c(1:5)])
+# Ensure all values are numeric
+for (col in names(AD_mouse_loading)) {
+  AD_mouse_loading[[col]] <- as.numeric(AD_mouse_loading[[col]])
+}
+# Convert back to matrix
+AD_mouse_loading <- as.matrix(AD_mouse_loading)
+# Calculate explained variance of AD mouse in human
+var_mh_AD <- lapply(1:ncol(AD_mouse_loading), function(x) (t(AD_mouse_loading[,x])%*%t(human_data_matrix)%*%human_data_matrix%*%AD_mouse_loading[,x])/(sum(diag(t(AD_mouse_loading)%*%t(human_data_matrix)%*%human_data_matrix%*%AD_mouse_loading))))
+
+# T2D Calculation
+# Get mouse feature loadings from principal component analysis
+T2D_mouse_loading <- as.matrix(Q_mouse[,c(6:10)])
+# Ensure all values are numeric
+for (col in names(T2D_mouse_loading)) {
+  T2D_mouse_loading[[col]] <- as.numeric(T2D_mouse_loading[[col]])
+}
+# Convert back to matrix
+T2D_mouse_loading <- as.matrix(T2D_mouse_loading)
+# Calculate explained variance of T2D mouse in human
+var_mh_T2D <- lapply(1:ncol(T2D_mouse_loading), function(x) (t(T2D_mouse_loading[,x])%*%t(human_data_matrix)%*%human_data_matrix%*%T2D_mouse_loading[,x])/(sum(diag(t(T2D_mouse_loading)%*%t(human_data_matrix)%*%human_data_matrix%*%T2D_mouse_loading))))
+
+# Both AD and T2D Calculation
+# Get mouse feature loadings from principal component analysis
+Both_mouse_loading <- as.matrix(Q_mouse[,c(11:15)])
+# Ensure all values are numeric
+for (col in names(Both_mouse_loading)) {
+  Both_mouse_loading[[col]] <- as.numeric(Both_mouse_loading[[col]])
+}
+# Convert back to matrix
+Both_mouse_loading <- as.matrix(Both_mouse_loading)
+# Calculate explained variance of Both mouse in human
+var_mh_Both <- lapply(1:ncol(Both_mouse_loading), function(x) (t(Both_mouse_loading[,x])%*%t(human_data_matrix)%*%human_data_matrix%*%Both_mouse_loading[,x])/(sum(diag(t(Both_mouse_loading)%*%t(human_data_matrix)%*%human_data_matrix%*%Both_mouse_loading))))
+
+# Plotting the variance explained
+# Prepare data for the variance explained from mouse in human
+AD_variance_MouseInHuman <- data.frame(variance = unlist(var_mh_AD))
+AD_variance_MouseInHuman <- head(AD_variance_MouseInHuman, 5)
+AD_variance_MouseInHuman <- AD_variance_MouseInHuman*100
+# Select the 5 PCs in the Mouse AD
+var_exp_mouseAD <- head(var_exp_mouseAD, 5)
+# Prepare Labels for the 5 PCs
+AD_PC <- c("PC1", "PC2", "PC3", "PC4", "PC5")
+# Prepare the dataframe
+AD_var_exp <- cbind(AD_PC, var_exp_mouseAD, AD_variance_MouseInHuman)
+colnames(AD_var_exp)[1] <- "AD_PC"
+colnames(AD_var_exp)[2] <- "MouseAD"
+colnames(AD_var_exp)[3] <- "MouseInHuman"
+
+#svg('MouseHumanVarExp_AD.svg', width = 4, height = 2)
+# Plot of the AD variance explained for the 5 PCs
+ggplot(AD_var_exp, aes(x = MouseAD, y = MouseInHuman)) +
+  geom_point(color = "black", size = 3) +  # Change point color and size
+  labs(title = NULL,
+       x = "Percent Variance Explained in Mouse",
+       y = "Percent Variance Explained of Mouse in Human") +
+  theme_bw() + theme(panel.grid=element_blank()) + 
+  scale_x_continuous(expand = c(0, 0), limits = c(0,60)) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0,60)) +
+  geom_abline(intercept = 0, slope = 1, linetype = "dotted", color = "black", linewidth = 0.2)
+#dev.off()
+
+# Prepare data for the variance explained from mouse in human
+T2D_variance_MouseInHuman <- data.frame(variance = unlist(var_mh_T2D))
+T2D_variance_MouseInHuman <- head(T2D_variance_MouseInHuman, 5)
+T2D_variance_MouseInHuman <- T2D_variance_MouseInHuman*100
+# Select the 5 PCs in the Mouse T2D
+var_exp_mouseT2D <- head(var_exp_mouseT2D, 5)
+# Prepare Labels for the 5 PCs
+T2D_PC <- c("PC1", "PC2", "PC3", "PC4", "PC5")
+# Prepare the dataframe
+T2D_var_exp <- cbind(T2D_PC, var_exp_mouseT2D, T2D_variance_MouseInHuman)
+colnames(T2D_var_exp)[1] <- "T2D_PC"
+colnames(T2D_var_exp)[2] <- "MouseT2D"
+colnames(T2D_var_exp)[3] <- "MouseInHuman"
+
+#svg('MouseHumanVarExp_T2D.svg', width = 4, height = 2)
+# Plot of the T2D variance explained for the 5 PCs
+ggplot(T2D_var_exp, aes(x = MouseT2D, y = MouseInHuman)) +
+  geom_point(color = "black", size = 3) +  # Change point color and size
+  labs(title = NULL,
+       x = "Percent Variance Explained in Mouse",
+       y = "Percent Variance Explained of Mouse in Human") +
+  theme_bw() + theme(panel.grid=element_blank()) + 
+  scale_x_continuous(expand = c(0, 0), limits = c(0,60)) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0,60)) +
+  geom_abline(intercept = 0, slope = 1, linetype = "dotted", color = "black", linewidth = 0.2)
+#dev.off()
+
+# Prepare data for the variance explained from mouse in human
+Both_variance_MouseInHuman <- data.frame(variance = unlist(var_mh_Both))
+Both_variance_MouseInHuman <- head(Both_variance_MouseInHuman, 5)
+Both_variance_MouseInHuman <- Both_variance_MouseInHuman*100
+# Select the 5 PCs in the Mouse Both
+var_exp_mouseBoth <- head(var_exp_mouseBoth, 5)
+# Prepare Labels for the 5 PCs
+Both_PC <- c("PC1", "PC2", "PC3", "PC4", "PC5")
+# Prepare the dataframe
+Both_var_exp <- cbind(Both_PC, var_exp_mouseBoth, Both_variance_MouseInHuman)
+colnames(Both_var_exp)[1] <- "Both_PC"
+colnames(Both_var_exp)[2] <- "MouseBoth"
+colnames(Both_var_exp)[3] <- "MouseInHuman"
+
+#svg('MouseHumanVarExp_Both.svg', width = 4, height = 2)
+# Plot of the Both variance explained for the 5 PCs
+ggplot(Both_var_exp, aes(x = MouseBoth, y = MouseInHuman)) +
+  geom_point(color = "black", size = 3) +  # Change point color and size
+  labs(title = NULL,
+       x = "Percent Variance Explained in Mouse",
+       y = "Percent Variance Explained of Mouse in Human") +
+  theme_bw() + theme(panel.grid=element_blank()) + 
+  scale_x_continuous(expand = c(0, 0), limits = c(0,60)) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0,60)) +
+  geom_abline(intercept = 0, slope = 1, linetype = "dotted", color = "black", linewidth = 0.2)
+#dev.off()
+```
+
+# 6 GENE SET ENRICHMENT ANALYSIS
+```{r GENE SET ENRICHMENT ANALYSIS - KEGG PATHWAY}
+# SET THE DESIRED ORGANISM HERE
+organism <- "org.Hs.eg.db"
+# Prepare the dataset to be used for GSEA (KEGG)
+hs_KEGG_sets <- msigdbr(species = "Homo sapiens",
+                        category = "C2", subcategory = "CP:KEGG"
+                       )
+
+# Move the row names to be in the first column
+Q_mouse_GSE <- as.data.frame(Q_mouse)
+Q_mouse_GSE <- tibble::rownames_to_column(Q_mouse_GSE)
+colnames(Q_mouse_GSE)[1] <- "genelist"
+# Prepare a list of PC column names that will be used in the for loop
+pc_columns <- grep("PC", colnames(Q_mouse_GSE), value = TRUE)
+# Create an empty list to store GSEA results for each PC
+gsea_results_list <- list()
+
+# GSEA Analysis - For Loop for All PCs
+for (pc_col in pc_columns) {
+  # Extract gene list for each of the current PC through the for loop
+  gene_list <- Q_mouse_GSE[, c("genelist", pc_col)]
+  # Sort gene list by values of the loading scores
+  gene_list <- gene_list %>% arrange(desc(!!sym(pc_col)))
+  # Extract PC values for GSEA analysis
+  pc_gene_list <- gene_list[[pc_col]]
+  names(pc_gene_list) <- gene_list$genelist
+  # Run the GSEA analysis
+  gsea_results <- GSEA(
+    geneList = pc_gene_list,
+    minGSSize = 5,
+    maxGSSize = 500,
+    pvalueCutoff = 0.8, # Higher cutoff for visualization, but not all used
+    eps = 0,
+    seed = TRUE,
+    pAdjustMethod = "BH", # Benjamini-Hochberg correction factor
+    TERM2GENE = dplyr::select(hs_KEGG_sets, gs_name, gene_symbol)
+  )
+  # Store GSEA results in the list
+  gsea_results_list[[pc_col]] <- data.frame(gsea_results@result)
+}
+# Save for kegg pathway
+kegg_gsea_results_list <- gsea_results_list
+# Save the GSEA File 
+write.xlsx(kegg_gsea_results_list, "GSEA_KEGG_ADmouse-to-human.xlsx")
+```
+
+```{r KEGG Pathway for T2D_PC2, T2D_PC3, ana Both_PC3}
+# T2D_PC2 KEGG 
+#svg('T2D_PC2_KEGG.svg', width = 4.5, height = 1.4)
+# Select the T2D_PC2 GSEA results
+T2D_PC2_KEGG <- kegg_gsea_results_list$T2D_PC2
+# Remove the Data Below FDR of 0.25 (0.25 is considered the level of significance)
+T2D_PC2_KEGG  <- T2D_PC2_KEGG [with(T2D_PC2_KEGG , !((p.adjust >= 0.25))), ]
+Proc_T2D_PC2_KEGG <- T2D_PC2_KEGG %>% mutate(sign = NES <= 0)
+# Renaming the rows with text that is easier to read
+Proc_T2D_PC2_KEGG$Description[1] <- "Parkinson's Disease"
+Proc_T2D_PC2_KEGG$Description[2] <- "Glycosaminoglycan Biosynthesis Heparan Sulfate"
+Proc_T2D_PC2_KEGG$Description[3] <- "Cytokine Cytokine Receptor Interaction"
+Proc_T2D_PC2_KEGG$Description[4] <- "Oxidative Phosphorylation"
+Proc_T2D_PC2_KEGG$Description[5] <- "Complement and Coagulation Cascades"
+Proc_T2D_PC2_KEGG$Description[6] <- "ECM Receptor Interaction"
+Proc_T2D_PC2_KEGG$Description[7] <- "Endocytosis"
+# Adjust the positions on the bar chart to display bars from lowest NES value to largest value
+arranged_position <- arrange(Proc_T2D_PC2_KEGG, desc(NES))
+# Pull out the positions for the enrichment plot
+positions <- arranged_position$Description
+
+# Creating the horizontal bar plots
+ggplot(Proc_T2D_PC2_KEGG) +
+  geom_col(aes(x = NES, y = Description, fill=sign), colour = "black", width = 0.8, alpha = 1) + 
+  ylab(NULL) + xlab("Normalized Enrichment Score") + theme_minimal() + 
+  theme(legend.position = "none", text=element_text(color="black", size = 10), 
+        axis.text = element_text(color = "black", size=10)) + theme_classic() + 
+geom_vline(xintercept = 0, color = "black", linetype = "solid", linewidth = 1.5) +
+  xlim(c(-2.5,2.5)) + scale_y_discrete(limits = positions) + scale_fill_manual(values = c("royalblue", "royalblue"))
+#dev.off()
+
+# T2D_PC3 KEGG 
+# No pathways were found significant for T2D_PC3
+
+# Both_PC3 KEGG 
+#svg('Both_PC3_KEGG.svg', width = 4.5, height = 1)
+# Select the Both_PC3 GSEA results
+Both_PC3_KEGG <- kegg_gsea_results_list$Both_PC3
+# Remove the Data Below FDR of 0.25 (0.25 is considered the level of significance)
+Both_PC3_KEGG  <- Both_PC3_KEGG [with(Both_PC3_KEGG , !((p.adjust >= 0.25))), ]
+Proc_Both_PC3_KEGG <- Both_PC3_KEGG %>% mutate(sign = NES <= 0)
+# Renaming the rows with text that is easier to read
+Proc_Both_PC3_KEGG$Description[1] <- "Phosphatidylinositol Signaling System"
+Proc_Both_PC3_KEGG$Description[2] <- "Terpenoid Backbone Biosynthesis"
+# Adjust the positions on the bar chart to display bars from lowest NES value to largest value
+arranged_position <- arrange(Proc_Both_PC3_KEGG, desc(NES))
+# Pull out the positions for the enrichment plot
+positions <- arranged_position$Description
+
+# Creating the horizontal bar plots
+ggplot(Proc_Both_PC3_KEGG) +
+  geom_col(aes(x = NES, y = Description, fill=sign), colour = "black", width = 0.8) + 
+  ylab(NULL) + xlab("Normalized Enrichment Score") + theme_minimal() + 
+  theme(legend.position = "none", text=element_text(color="black", size = 10), 
+        axis.text = element_text(color = "black", size=10)) + theme_classic() + 
+geom_vline(xintercept = 0, color = "black", linetype = "solid", linewidth = 1.5) +
+  xlim(c(-2.5,2.5)) + scale_y_discrete(limits = positions) + scale_fill_manual(values = c("royalblue", "royalblue"))
+#dev.off()
+```
+ 
+```{r GENE SET ENRICHMENT ANALYSIS - HALLMARK PATHWAY}
+# SET THE DESIRED ORGANISM HERE
+organism <- "org.Hs.eg.db"
+# Prepare the dataset to be used for GSEA (HALLMARK)
+hs_KEGG_sets <- msigdbr(species = "Homo sapiens",
+                        category = "H"
+                       )
+
+# Move the row names to be in the first column
+Q_mouse_GSE <- as.data.frame(Q_mouse)
+Q_mouse_GSE <- tibble::rownames_to_column(Q_mouse_GSE)
+colnames(Q_mouse_GSE)[1] <- "genelist"
+# Prepare a list of PC column names that will be used in the for loop
+pc_columns <- grep("PC", colnames(Q_mouse_GSE), value = TRUE)
+# Create an empty list to store GSEA results for each PC
+gsea_results_list <- list()
+
+# GSEA Analysis - For Loop for All PCs
+for (pc_col in pc_columns) {
+  # Extract gene list for each of the current PC through the for loop
+  gene_list <- Q_mouse_GSE[, c("genelist", pc_col)]
+  # Sort gene list by values of the loading scores
+  gene_list <- gene_list %>% arrange(desc(!!sym(pc_col)))
+  # Extract PC values for GSEA analysis
+  pc_gene_list <- gene_list[[pc_col]]
+  names(pc_gene_list) <- gene_list$genelist
+  # Run the GSEA analysis
+  gsea_results <- GSEA(
+    geneList = pc_gene_list,
+    minGSSize = 5,
+    maxGSSize = 500,
+    pvalueCutoff = 0.8, # Higher cutoff for visualization, but not all used
+    eps = 0,
+    seed = TRUE,
+    pAdjustMethod = "BH", # Benjamini-Hochberg correction factor
+    TERM2GENE = dplyr::select(hs_KEGG_sets, gs_name, gene_symbol)
+  )
+  # Store GSEA results in the list
+  gsea_results_list[[pc_col]] <- data.frame(gsea_results@result)
+}
+# Save for hallmark list
+hallmark_gsea_results_list <- gsea_results_list
+# Save the GSEA File 
+write.xlsx(hallmark_gsea_results_list, "GSEA_HALLMARK_ADmouse-to-human.xlsx")
+```
+
+```{r HALLMARK Pathway for T2D_PC2, T2D_PC3, ana Both_PC3}
+# T2D_PC2 HALLMARK
+#svg('T2D_PC2_HALLMARK.svg', width = 4.5, height = 3.2)
+# Select the T2D_PC2 GSEA results
+T2D_PC2_HALLMARK <- hallmark_gsea_results_list$T2D_PC2
+# Remove the Data Below FDR of 0.25 (0.25 is considered the level of significance)
+T2D_PC2_HALLMARK  <- T2D_PC2_HALLMARK [with(T2D_PC2_HALLMARK , !((p.adjust >= 0.25))), ]
+Proc_T2D_PC2_HALLMARK <- T2D_PC2_HALLMARK %>% mutate(sign = NES <= 0)
+# Renaming the rows with text that is easier to read
+Proc_T2D_PC2_HALLMARK$Description[1] <- "MTORC1 Signaling"
+Proc_T2D_PC2_HALLMARK$Description[2] <- "Oxidative Phosphorylation"
+Proc_T2D_PC2_HALLMARK$Description[3] <- "Glycolysis"
+Proc_T2D_PC2_HALLMARK$Description[4] <- "Coagulation"
+Proc_T2D_PC2_HALLMARK$Description[5] <- "Interferon Gamma Response"
+Proc_T2D_PC2_HALLMARK$Description[6] <- "MYC Targets V2"
+Proc_T2D_PC2_HALLMARK$Description[7] <- "KRAS Signaling DN"
+Proc_T2D_PC2_HALLMARK$Description[8] <- "Epithelial Mesenchymal Transition"
+Proc_T2D_PC2_HALLMARK$Description[9] <- "Interferon Alpha Response"
+Proc_T2D_PC2_HALLMARK$Description[10] <- "Complement"
+Proc_T2D_PC2_HALLMARK$Description[11] <- "Inflammatory Response"
+Proc_T2D_PC2_HALLMARK$Description[12] <- "DNA Repair"
+Proc_T2D_PC2_HALLMARK$Description[13] <- "Estrogen Response Early"
+Proc_T2D_PC2_HALLMARK$Description[14] <- "IL6 JAK STAT3 Signaling"
+Proc_T2D_PC2_HALLMARK$Description[15] <- "Myogenesis"
+Proc_T2D_PC2_HALLMARK$Description[16] <- "G2M Checkpoint"
+# Adjust the positions on the bar chart to display bars from lowest NES value to largest value
+arranged_position <- arrange(Proc_T2D_PC2_HALLMARK, desc(NES))
+# Pull out the positions for the enrichment plot
+positions <- arranged_position$Description
+# Creating the horizontal bar plots
+ggplot(Proc_T2D_PC2_HALLMARK) +
+  geom_col(aes(x = NES, y = Description, fill=sign), colour = "black", width = 0.8) + 
+  ylab(NULL) + xlab("Normalized Enrichment Score") + theme_minimal() + 
+  theme(legend.position = "none", text=element_text(color="black", size = 10), 
+        axis.text = element_text(color = "black", size=10)) + theme_classic() + 
+geom_vline(xintercept = 0, color = "black", linetype = "solid", linewidth = 1.5) +
+  xlim(c(-2.5,2.5)) + scale_y_discrete(limits = positions) + scale_fill_manual(values = c("royalblue", "royalblue"))
+#dev.off()
+
+# T2D_PC3 HALLMARK
+#svg('T2D_P3_HALLMARK.svg', width = 4.5, height = 1)
+# Select the T2D_PC3 GSEA results
+T2D_PC3_HALLMARK <- hallmark_gsea_results_list$T2D_PC3
+# Remove the Data Below FDR of 0.25 (0.25 is considered the level of significance)
+T2D_PC3_HALLMARK  <- T2D_PC3_HALLMARK [with(T2D_PC3_HALLMARK , !((p.adjust >= 0.25))), ]
+Proc_T2D_PC3_HALLMARK <- T2D_PC3_HALLMARK %>% mutate(sign = NES <= 0)
+# Renaming the rows with text that is easier to read
+Proc_T2D_PC3_HALLMARK$Description[1] <- "MTORC1 Signaling"
+Proc_T2D_PC3_HALLMARK$Description[2] <- "Estrogen Response Late"
+# Adjust the positions on the bar chart to display bars from lowest NES value to largest value
+arranged_position <- arrange(Proc_T2D_PC3_HALLMARK, desc(NES))
+# Pull out the positions for the enrichment plot
+positions <- arranged_position$Description
+# Creating the horizontal bar plots
+ggplot(Proc_T2D_PC3_HALLMARK) +
+  geom_col(aes(x = NES, y = Description, fill=sign), colour = "black", width = 0.8) + 
+  ylab(NULL) + xlab("Normalized Enrichment Score") + theme_minimal() + 
+  theme(legend.position = "none", text=element_text(color="black", size = 10), 
+        axis.text = element_text(color = "black", size=10)) + theme_classic() + 
+geom_vline(xintercept = 0, color = "black", linetype = "solid", linewidth = 1.5) +
+  xlim(c(-2.5,2.5)) + scale_y_discrete(limits = positions) + scale_fill_manual(values = c("royalblue", "royalblue"))
+#dev.off()
+
+# Both_PC3 HALLMARK
+#svg('Both_P3_HALLMARK.svg', width = 4.5, height = 1.4)
+# Select the Both_PC3 GSEA results
+Both_PC3_HALLMARK <- hallmark_gsea_results_list$Both_PC3
+# Remove the Data Below FDR of 0.25 (0.25 is considered the level of significance)
+Both_PC3_HALLMARK  <- Both_PC3_HALLMARK [with(Both_PC3_HALLMARK , !((p.adjust >= 0.25))), ]
+Proc_Both_PC3_HALLMARK <- Both_PC3_HALLMARK %>% mutate(sign = NES <= 0)
+# Renaming the rows with text that is easier to read
+Proc_Both_PC3_HALLMARK$Description[1] <- "DNA Repair"
+Proc_Both_PC3_HALLMARK$Description[2] <- "Cholesterol Homeostasis"
+Proc_Both_PC3_HALLMARK$Description[3] <- "Complement"
+Proc_Both_PC3_HALLMARK$Description[4] <- "Spermatogenesis"
+Proc_Both_PC3_HALLMARK$Description[5] <- "Estrogen Response Late"
+Proc_Both_PC3_HALLMARK$Description[6] <- "Heme Metabolism"
+Proc_Both_PC3_HALLMARK$Description[7] <- "Xenobiotic Metabolism"
+# Adjust the positions on the bar chart to display bars from lowest NES value to largest value
+arranged_position <- arrange(Proc_Both_PC3_HALLMARK, desc(NES))
+# Pull out the positions for the enrichment plot
+positions <- arranged_position$Description
+# Creating the horizontal bar plots
+ggplot(Proc_Both_PC3_HALLMARK) +
+  geom_col(aes(x = NES, y = Description, fill=sign), colour = "black", width = 0.8) + 
+  ylab(NULL) + xlab("Normalized Enrichment Score") + theme_minimal() + 
+  theme(legend.position = "none", text=element_text(color="black", size = 10), 
+        axis.text = element_text(color = "black", size=10)) + theme_classic() + 
+geom_vline(xintercept = 0, color = "black", linetype = "solid", linewidth = 1.5) +
+  xlim(c(-2.5,2.5)) + scale_y_discrete(limits = positions) + scale_fill_manual(values = c("royalblue", "royalblue"))
+#dev.off()
+```
+
+# 7 TOP & BOTTOM 25 GENES LOADING SCORES ON SELECTED PCs
+## 7.1 Heatmap on Humans Based on Both_PC3
+```{r Top & Bottom 25 Genes Analysis on Both_PC3}
+# Move the row names into the first column
+Q_mouse_topbotlist <- as.data.frame(Q_mouse)
+Q_mouse_topbotlist <- tibble::rownames_to_column(Q_mouse_topbotlist)
+colnames(Q_mouse_topbotlist)[1] <- "geneID"
+# Pull out only the Both_PC3 data 
+Q_mouse_topbotlist_Both_PC3 <- Q_mouse_topbotlist[, c("geneID", "Both_PC3")]
+
+# Sort the dataframe based on the values in the Both_PC3 column
+Q_mouse_Both_PC3_sorted <- Q_mouse_topbotlist_Both_PC3[order(Q_mouse_topbotlist_Both_PC3$Both_PC3), ]
+
+# Get the top 25 and bottom 25 genes
+Both_PC3_top_25_genes <- Q_mouse_Both_PC3_sorted[order(Q_mouse_Both_PC3_sorted$Both_PC3, decreasing = TRUE), ][1:25, ]
+Both_PC3_bottom_25_genes <- Q_mouse_Both_PC3_sorted[order(Q_mouse_Both_PC3_sorted$Both_PC3), ][1:25, ]
+# Combine the top and bottom 25 geneID values together
+topbot10_Both_PC3 <- rbind(Both_PC3_top_25_genes, Both_PC3_bottom_25_genes)
+
+# Extract the gene IDs from topbot10_Both_PC3
+geneIDs <- topbot10_Both_PC3$geneID
+
+# Get the column names of Xhumandat that match the gene IDs
+matching_columns <- colnames(Xhumandat)[which(colnames(Xhumandat) %in% geneIDs)]
+Xhumandat2 <- cbind(Xhumandat[,c(1:8)], Xhumandat[, matching_columns])
+
+# Create a placement variable for the matrix
+Xhumandat2_m <- Xhumandat2
+# Create a variable to hold the row names
+Xhumandat2_rowname <- Xhumandat2_m$Condition
+# Remove the "Description" column to move as a row name
+Xhumandat2_matrix <- Xhumandat2_m[-c(1:8)]
+
+# Creating different groups for the metabolites to reorganize order based on the associations with T2D and AD
+Xhumandat2_Control <- Xhumandat2_matrix[1:24,]
+Xhumandat2_AD <- Xhumandat2_matrix[25:42,]
+
+# Bind the groups of metabolites by respective associations with T2D and AD
+Xhumandat2_avg_matrix <- rbind(Xhumandat2_Control, Xhumandat2_AD)
+
+# Make the data frame a matrix
+Xhumandat2_avg_matrix <- as.matrix(Xhumandat2_avg_matrix)
+rownames(Xhumandat2_avg_matrix) <- Xhumandat2_rowname
+Xhumandat2_avg_matrix <- t(Xhumandat2_avg_matrix)
+
+# Generate a vector indicating the group for each column
+heatmap_condition_label <- data.frame(Condition = rep(c("Control", "AD"), c(24,18)))
+colnames(Xhumandat2_avg_matrix) <- Xhumandat$SampleID
+newrowname <- colnames(Xhumandat2_avg_matrix)
+rownames(heatmap_condition_label) <- newrowname
+
+PC_score_ordering_BothPC3 <- Mouse_Human_TCR_reg[order(Mouse_Human_TCR_reg$Both_PC3), ]
+
+# Get the order of patient names from the data frame
+order_of_names_BothPC3 <- PC_score_ordering_BothPC3$SampleID
+# Reorder the columns of the matrix according to the order
+Xhumandat2_avg_matrix <- Xhumandat2_avg_matrix[, order_of_names_BothPC3]
+
+#svg('Heatmap_BothPC3.svg', width = 7.5, height = 7)
+# Generate the heat map with annotation
+heatmapfig <- pheatmap(Xhumandat2_avg_matrix,
+  cluster_rows = TRUE,
+  cluster_cols = FALSE,
+  color = colorRampPalette(c("blue", "white", "red"))(10000),
+  border_color = "black",
+  breaks = seq(-3, 3, length.out = 10000),
+  angle_col = 45,
+  fontsize_col = 8,
+  fontsize_row = 5,
+  cellwidth = 8,
+  cellheight = 5,
+  annotation_col = heatmap_condition_label,
+  annotation_colors = list(Condition = c("Control" = "#4575b4", "AD" = "#d73027")),
+  show_colnames = FALSE,
+  show_rownames = TRUE) 
+#dev.off()
+```
+
+## 7.2 Heatmap on Humans Based on T2D_PC2
+```{r Top & Bottom 25 Genes Analysis on T2D_PC2}
+# Move the row names into the first column
+Q_mouse_topbotlist <- as.data.frame(Q_mouse)
+Q_mouse_topbotlist <- tibble::rownames_to_column(Q_mouse_topbotlist)
+colnames(Q_mouse_topbotlist)[1] <- "geneID"
+# Pull out only the T2D_PC2 data 
+Q_mouse_topbotlist_T2D_PC2 <- Q_mouse_topbotlist[, c("geneID", "T2D_PC2")]
+
+# Sort the dataframe based on the values in the T2D_PC2 column
+Q_mouse_T2D_PC2_sorted <- Q_mouse_topbotlist_T2D_PC2[order(Q_mouse_topbotlist_T2D_PC2$T2D_PC2), ]
+
+# Get the top 25 and bottom 25 genes
+T2D_PC2_top_25_genes <- Q_mouse_T2D_PC2_sorted[order(Q_mouse_T2D_PC2_sorted$T2D_PC2, decreasing = TRUE), ][1:25, ]
+T2D_PC2_bottom_25_genes <- Q_mouse_T2D_PC2_sorted[order(Q_mouse_T2D_PC2_sorted$T2D_PC2), ][1:25, ]
+# Combine the top and bottom 25 geneID values together
+topbot10_T2D_PC2 <- rbind(T2D_PC2_top_25_genes, T2D_PC2_bottom_25_genes)
+
+# Extract the gene IDs from topbot10_T2D_PC2
+geneIDs <- topbot10_T2D_PC2$geneID
+
+# Get the column names of Xhumandat that match the gene IDs
+matching_columns <- colnames(Xhumandat)[which(colnames(Xhumandat) %in% geneIDs)]
+Xhumandat2 <- cbind(Xhumandat[,c(1:8)], Xhumandat[, matching_columns])
+
+# Create a placement variable for the matrix
+Xhumandat2_m <- Xhumandat2
+# Create a variable to hold the row names
+Xhumandat2_rowname <- Xhumandat2_m$Condition
+# Remove the "Description" column to move as a row name
+Xhumandat2_matrix <- Xhumandat2_m[-c(1:8)]
+
+# Creating different groups for the metabolites to reorganize order based on the associations with T2D and AD
+Xhumandat2_Control <- Xhumandat2_matrix[1:24,]
+Xhumandat2_AD <- Xhumandat2_matrix[25:42,]
+
+# Bind the groups of metabolites by respective associations with T2D and AD
+Xhumandat2_avg_matrix <- rbind(Xhumandat2_Control, Xhumandat2_AD)
+
+# Make the data frame a matrix
+Xhumandat2_avg_matrix <- as.matrix(Xhumandat2_avg_matrix)
+rownames(Xhumandat2_avg_matrix) <- Xhumandat2_rowname
+Xhumandat2_avg_matrix <- t(Xhumandat2_avg_matrix)
+
+# Generate a vector indicating the group for each column
+heatmap_condition_label <- data.frame(Condition = rep(c("Control", "AD"), c(24,18)))
+colnames(Xhumandat2_avg_matrix) <- Xhumandat$SampleID
+newrowname <- colnames(Xhumandat2_avg_matrix)
+rownames(heatmap_condition_label) <- newrowname
+
+PC_score_ordering_T2DPC2 <- Mouse_Human_TCR_reg[order(Mouse_Human_TCR_reg$T2D_PC2), ]
+
+# Get the order of patient names from the data frame
+order_of_names_T2DPC2 <- PC_score_ordering_T2DPC2$SampleID
+
+# Reorder the columns of the matrix according to the order
+Xhumandat2_avg_matrix <- Xhumandat2_avg_matrix[, order_of_names_T2DPC2]
+
+#svg('Heatmap_T2DPC2.svg', width = 7.5, height = 7)
+# Generate the heat map with annotation
+heatmapfig <- pheatmap(Xhumandat2_avg_matrix,
+  cluster_rows = TRUE,
+  cluster_cols = FALSE,
+  color = colorRampPalette(c("blue", "white", "red"))(10000),
+  border_color = "black",
+  breaks = seq(-3, 3, length.out = 10000),
+  angle_col = 45,
+  fontsize_col = 8,
+  fontsize_row = 5,
+  cellwidth = 8,
+  cellheight = 5,
+  annotation_col = heatmap_condition_label,
+  annotation_colors = list(Condition = c("Control" = "#4575b4", "AD" = "#d73027")),
+  show_colnames = FALSE,
+  show_rownames = TRUE) 
+#dev.off()
+```
+
+## 7. Heatmap on Humans Based on T2D_PC3
+
+```{r Top & Bottom 25 Genes Analysis on T2D_PC3}
+# Move the row names into the first column
+Q_mouse_topbotlist <- as.data.frame(Q_mouse)
+Q_mouse_topbotlist <- tibble::rownames_to_column(Q_mouse_topbotlist)
+colnames(Q_mouse_topbotlist)[1] <- "geneID"
+# Pull out only the T2D_PC3 data 
+Q_mouse_topbotlist_T2D_PC3 <- Q_mouse_topbotlist[, c("geneID", "T2D_PC3")]
+
+# Sort the dataframe based on the values in the T2D_PC3 column
+Q_mouse_T2D_PC3_sorted <- Q_mouse_topbotlist_T2D_PC3[order(Q_mouse_topbotlist_T2D_PC3$T2D_PC3), ]
+
+# Get the top 25 and bottom 25 genes
+T2D_PC3_top_25_genes <- Q_mouse_T2D_PC3_sorted[order(Q_mouse_T2D_PC3_sorted$T2D_PC3, decreasing = TRUE), ][1:25, ]
+T2D_PC3_bottom_25_genes <- Q_mouse_T2D_PC3_sorted[order(Q_mouse_T2D_PC3_sorted$T2D_PC3), ][1:25, ]
+
+# Combine the top and bottom 25 geneID values together
+topbot10_T2D_PC3 <- rbind(T2D_PC3_top_25_genes, T2D_PC3_bottom_25_genes)
+
+# Extract the gene IDs from topbot10_T2D_PC3
+geneIDs <- topbot10_T2D_PC3$geneID
+
+# Get the column names of Xhumandat that match the gene IDs
+matching_columns <- colnames(Xhumandat)[which(colnames(Xhumandat) %in% geneIDs)]
+Xhumandat2 <- cbind(Xhumandat[,c(1:8)], Xhumandat[, matching_columns])
+
+# Create a placement variable for the matrix
+Xhumandat2_m <- Xhumandat2
+# Create a variable to hold the row names
+Xhumandat2_rowname <- Xhumandat2_m$Condition
+# Remove the "Description" column to move as a row name
+Xhumandat2_matrix <- Xhumandat2_m[-c(1:8)]
+
+# Creating different groups for the metabolites to reorganize order based on the associations with T2D and AD
+Xhumandat2_Control <- Xhumandat2_matrix[1:24,]
+Xhumandat2_AD <- Xhumandat2_matrix[25:42,]
+
+# Bind the groups of metabolites by respective associations with T2D and AD
+Xhumandat2_avg_matrix <- rbind(Xhumandat2_Control, Xhumandat2_AD)
+
+# Make the data frame a matrix
+Xhumandat2_avg_matrix <- as.matrix(Xhumandat2_avg_matrix)
+rownames(Xhumandat2_avg_matrix) <- Xhumandat2_rowname
+Xhumandat2_avg_matrix <- t(Xhumandat2_avg_matrix)
+
+# Generate a vector indicating the group for each column
+heatmap_condition_label <- data.frame(Condition = rep(c("Control", "AD"), c(24,18)))
+colnames(Xhumandat2_avg_matrix) <- Xhumandat$SampleID
+newrowname <- colnames(Xhumandat2_avg_matrix)
+rownames(heatmap_condition_label) <- newrowname
+
+PC_score_ordering_T2DPC3 <- Mouse_Human_TCR_reg[order(Mouse_Human_TCR_reg$T2D_PC3), ]
+
+# Get the order of patient names from the data frame
+order_of_names_T2DPC3 <- PC_score_ordering_T2DPC3$SampleID
+# Reorder the columns of the matrix according to the order
+Xhumandat2_avg_matrix <- Xhumandat2_avg_matrix[, order_of_names_T2DPC3]
+
+#svg('Heatmap_T2DPC3.svg', width = 7.5, height = 7)
+# Generate the heat map with annotation
+heatmapfig <- pheatmap(Xhumandat2_avg_matrix,
+  cluster_rows = TRUE,
+  cluster_cols = FALSE,
+  color = colorRampPalette(c("blue", "white", "red"))(10000),
+  border_color = "black",
+  breaks = seq(-3, 3, length.out = 10000),
+  angle_col = 45,
+  fontsize_col = 8,
+  fontsize_row = 5,
+  cellwidth = 8,
+  cellheight = 5,
+  annotation_col = heatmap_condition_label,
+  annotation_colors = list(Condition = c("Control" = "#4575b4", "AD" = "#d73027")),
+  show_colnames = FALSE,
+  show_rownames = TRUE) 
+#dev.off()
+```
+
+# 8 SEX-DISEASE PREDICTABILITY AMONG SELECTED PCs
+## 8.1 Both_PC3 Analysis
+```{r Sex Interaction Relationship in Both_PC3}
+# SEX/CONDITION COMPARISON ACROSS SCORES
+Mouse_Human_TCR_group <- Mouse_Human_TCR %>%
+  mutate(Sex.condition = paste(Sex, Condition, sep = "_")) %>%
+  relocate(Sex.condition, .after = SampleID)
+
+# Prepare color groups below, which is shown in the graph
+#svg('Both_PC3_Sex2.svg', width = 4, height = 2.5)
+group_colors <- c("M_AD" = "black", "F_AD" = "black", "M_Control" = "black", "F_Control" = "black")
+# Plot the different groups respective of sex and disease status
+ggplot(Mouse_Human_TCR_group, aes(x = Sex.condition, y = Both_PC3, fill = Sex.condition)) +
+  geom_jitter(shape = 21, width = 0.1, height = 0, size = 2, color = "black") + 
+  geom_bar(stat = "identity", fill = "transparent", color = "transparent") +
+  stat_summary(fun = mean, geom = "errorbar", aes(ymax = after_stat(y), ymin = after_stat(y)), width = 0.35, color = "red") +
+  stat_summary(fun.data = function(y) {
+    data.frame(ymin = quantile(y, 0.25), ymax = quantile(y, 0.75), y = mean(y))
+  }, geom = "errorbar", width = 0.25, color = "red") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  scale_fill_manual(values = group_colors) +  # Set manual fill color scale
+  coord_cartesian(ylim = c(-2000, 2000)) + 
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank()) +
+  labs(x = "Sex.condition", y = "Both_PC3")
+#dev.off()
+```
+
+```{r Kruskal Wallis Test Among Sex and Condition}
+# Rename a new variable for the Kruskal-Wallis statistical analysis
+Mouse_Human_TCR_group_KW <- Mouse_Human_TCR_group
+# Pull out the Sex and condition information and the PC scores of interest
+Mouse_Human_TCR_group_KW <- Mouse_Human_TCR_group_KW[c("Sex.condition", "Both_PC3")]
+# Perform KW test
+p_values <- c()
+for (i in 2:ncol(Mouse_Human_TCR_group_KW)) {
+  kwTest2 <- kruskal.test(Mouse_Human_TCR_group_KW[,i], Mouse_Human_TCR_group_KW$Sex.condition)
+  p_values <- c(p_values, kwTest2$p.value)
+}
+```
+
+```{r Mann Whitney with BH-Corrected Test Among Sex and Condition}
+# Rename a new variable for the Mann-Whitney statistical analysis
+Mouse_Human_TCR_group_MW <- Mouse_Human_TCR_group
+# Establishing four different groups based disease condition and sex
+# First establish a group for each sex/condition pair
+F_Control <- Mouse_Human_TCR_group_MW[grepl("F_Control", Mouse_Human_TCR_group_MW$Sex.condition),]
+M_Control <- Mouse_Human_TCR_group_MW[grepl("M_Control", Mouse_Human_TCR_group_MW$Sex.condition),]
+F_AD <- Mouse_Human_TCR_group_MW[grepl("F_AD", Mouse_Human_TCR_group_MW$Sex.condition),]
+M_AD <- Mouse_Human_TCR_group_MW[grepl("M_AD", Mouse_Human_TCR_group_MW$Sex.condition),]
+# Calculate p-values for each pair
+# Both_PC3 Mann Whitney Comparison
+F_ControlvsM_Control <- wilcox.test(F_Control$Both_PC3, M_Control$Both_PC3, alternative = "two.sided")
+F_ControlvsF_AD <- wilcox.test(F_Control$Both_PC3, F_AD$Both_PC3, alternative = "two.sided")
+F_ControlvsM_AD <- wilcox.test(F_Control$Both_PC3, M_AD$Both_PC3, alternative = "two.sided")
+M_ControlvsF_AD <- wilcox.test(M_Control$Both_PC3, F_AD$Both_PC3, alternative = "two.sided")
+M_ControlvsM_AD <- wilcox.test(M_Control$Both_PC3, M_AD$Both_PC3, alternative = "two.sided")
+F_ADvsM_AD <- wilcox.test(F_AD$Both_PC3, M_AD$Both_PC3,alternative = "two.sided")
+# Create a list for the disease-sex pair relationships 
+Pairwise <- c("F-Control vs M-Control", "F_Control vs F-AD", "F-Control vs M-AD", "M-Control vs F-AD", "M-Control vs M-AD", "F-AD vs M-AD")
+# Prepare the pvalues in a list
+Both_PC3 <- c(F_ControlvsM_Control$p.value, F_ControlvsF_AD$p.value, F_ControlvsM_AD$p.value, M_ControlvsF_AD$p.value, M_ControlvsM_AD$p.value, F_ADvsM_AD$p.value)
+# Generate Data frame for the MW test for Both_PC3
+Both_PC3_MW <- data.frame(Pairwise, Both_PC3)
+colnames(Both_PC3_MW)[2] <- "pval"
+# Perform Benjamini-Hochberg correction to account for multiple-testing
+Both_PC3_MW$adjFDR<- p.adjust(Both_PC3_MW$pval, method = "BH")
+```
+
+## 8.2 T2D_PC2 Analysis
+```{r Sex Interaction Relationship in T2D_PC2}
+# SEX/CONDITION COMPARISON ACROSS SCORES
+#svg('T2D_PC2_Sex2.svg', width = 4, height = 2.5)
+# Prepare color groups below, which is shown in the graph
+group_colors <- c("M_AD" = "black", "F_AD" = "black", "M_Control" = "black", "F_Control" = "black")
+# Plot the different groups respective of sex and disease status
+ggplot(Mouse_Human_TCR_group, aes(x = Sex.condition, y = T2D_PC2, fill = Sex.condition)) +
+  geom_jitter(shape = 21, width = 0.1, height = 0, size = 2, color = "black") + 
+  geom_bar(stat = "identity", fill = "transparent", color = "transparent") +
+  stat_summary(fun = mean, geom = "errorbar", aes(ymax = after_stat(y), ymin = after_stat(y)), width = 0.35, color = "red") +
+  stat_summary(fun.data = function(y) {
+    data.frame(ymin = quantile(y, 0.25), ymax = quantile(y, 0.75), y = mean(y))
+  }, geom = "errorbar", width = 0.25, color = "red") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  scale_fill_manual(values = group_colors) +  # Set manual fill color scale
+  coord_cartesian(ylim = c(-2000, 2000)) + 
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank()) +
+  labs(x = "Sex.condition", y = "T2D_PC2")
+#dev.off()
+```
+
+```{r Kruskal Wallis Test Among Sex and Condition}
+# Rename a new variable for the Kruskal-Wallis statistical analysis
+Mouse_Human_TCR_group_KW <- Mouse_Human_TCR_group
+# Pull out the Sex and condition information and the PC scores of interest
+Mouse_Human_TCR_group_KW <- Mouse_Human_TCR_group_KW[c("Sex.condition", "T2D_PC2")]
+# Perform KW test
+p_values <- c()
+for (i in 2:ncol(Mouse_Human_TCR_group_KW)) {
+  kwTest2 <- kruskal.test(Mouse_Human_TCR_group_KW[,i], Mouse_Human_TCR_group_KW$Sex.condition)
+  p_values <- c(p_values, kwTest2$p.value)
+}
+```
+
+```{r Mann Whitney with BH-Corrected Test Among Sex and Condition}
+# Rename a new variable for the Mann-Whitney statistical analysis
+Mouse_Human_TCR_group_MW <- Mouse_Human_TCR_group
+# Establishing four different groups based disease condition and sex
+# First establish a group for each sex/condition pair
+F_Control <- Mouse_Human_TCR_group_MW[grepl("F_Control", Mouse_Human_TCR_group_MW$Sex.condition),]
+M_Control <- Mouse_Human_TCR_group_MW[grepl("M_Control", Mouse_Human_TCR_group_MW$Sex.condition),]
+F_AD <- Mouse_Human_TCR_group_MW[grepl("F_AD", Mouse_Human_TCR_group_MW$Sex.condition),]
+M_AD <- Mouse_Human_TCR_group_MW[grepl("M_AD", Mouse_Human_TCR_group_MW$Sex.condition),]
+# Calculate p-values for each pair
+# T2D_PC2 Mann Whitney Comparison
+F_ControlvsM_Control <- wilcox.test(F_Control$T2D_PC2, M_Control$T2D_PC2, alternative = "two.sided")
+F_ControlvsF_AD <- wilcox.test(F_Control$T2D_PC2, F_AD$T2D_PC2, alternative = "two.sided")
+F_ControlvsM_AD <- wilcox.test(F_Control$T2D_PC2, M_AD$T2D_PC2, alternative = "two.sided")
+M_ControlvsF_AD <- wilcox.test(M_Control$T2D_PC2, F_AD$T2D_PC2, alternative = "two.sided")
+M_ControlvsM_AD <- wilcox.test(M_Control$T2D_PC2, M_AD$T2D_PC2, alternative = "two.sided")
+F_ADvsM_AD <- wilcox.test(F_AD$T2D_PC2, M_AD$T2D_PC2,alternative = "two.sided")
+# Create a list for the disease-sex pair relationships 
+Pairwise <- c("F-Control vs M-Control", "F_Control vs F-AD", "F-Control vs M-AD", "M-Control vs F-AD", "M-Control vs M-AD", "F-AD vs M-AD")
+# Prepare the pvalues in a list
+T2D_PC2 <- c(F_ControlvsM_Control$p.value, F_ControlvsF_AD$p.value, F_ControlvsM_AD$p.value, M_ControlvsF_AD$p.value, M_ControlvsM_AD$p.value, F_ADvsM_AD$p.value)
+# Generate Data frame for the MW test for T2D_PC2
+T2D_PC2_MW <- data.frame(Pairwise, T2D_PC2)
+colnames(T2D_PC2_MW)[2] <- "pval"
+# Perform Benjamini-Hochberg correction to account for multiple-testing
+T2D_PC2_MW$adjFDR<- p.adjust(T2D_PC2_MW$pval, method = "BH")
+```
+
+## 8.3 T2D_PC3 Analysis
+```{r Sex Interaction Relationship in T2D_PC3}
+# SEX/CONDITION COMPARISON ACROSS SCORES
+#svg('T2D_PC3_Sex2.svg', width = 4, height = 2.5)
+# Prepare color groups below, which is shown in the graph
+group_colors <- c("M_AD" = "black", "F_AD" = "black", "M_Control" = "black", "F_Control" = "black")
+# Plot the different groups respective of sex and disease status
+ggplot(Mouse_Human_TCR_group, aes(x = Sex.condition, y = T2D_PC3, fill = Sex.condition)) +
+  geom_jitter(shape = 21, width = 0.1, height = 0, size = 2, color = "black") + 
+  geom_bar(stat = "identity", fill = "transparent", color = "transparent") +
+  stat_summary(fun = mean, geom = "errorbar", aes(ymax = after_stat(y), ymin = after_stat(y)), width = 0.35, color = "red") +
+  stat_summary(fun.data = function(y) {
+    data.frame(ymin = quantile(y, 0.25), ymax = quantile(y, 0.75), y = mean(y))
+  }, geom = "errorbar", width = 0.25, color = "red") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  scale_fill_manual(values = group_colors) +  # Set manual fill color scale
+  coord_cartesian(ylim = c(-2000, 2000)) + 
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank()) +
+  labs(x = "Sex.condition", y = "T2D_PC3")
+#dev.off()
+```
+
+```{r Kruskal Wallis Test Among Sex and Condition}
+# Rename a new variable for the Kruskal-Wallis statistical analysis
+Mouse_Human_TCR_group_KW <- Mouse_Human_TCR_group
+# Pull out the Sex and condition information and the PC scores of interest
+Mouse_Human_TCR_group_KW <- Mouse_Human_TCR_group_KW[c("Sex.condition", "T2D_PC3")]
+# Perform KW test
+p_values <- c()
+for (i in 2:ncol(Mouse_Human_TCR_group_KW)) {
+  kwTest2 <- kruskal.test(Mouse_Human_TCR_group_KW[,i], Mouse_Human_TCR_group_KW$Sex.condition)
+  p_values <- c(p_values, kwTest2$p.value)
+}
+```
+
+```{r Mann Whitney with BH-Corrected Test Among Sex and Condition}
+# Rename a new variable for the Mann-Whitney statistical analysis
+Mouse_Human_TCR_group_MW <- Mouse_Human_TCR_group
+# Establishing four different groups based disease condition and sex
+# First establish a group for each sex/condition pair
+F_Control <- Mouse_Human_TCR_group_MW[grepl("F_Control", Mouse_Human_TCR_group_MW$Sex.condition),]
+M_Control <- Mouse_Human_TCR_group_MW[grepl("M_Control", Mouse_Human_TCR_group_MW$Sex.condition),]
+F_AD <- Mouse_Human_TCR_group_MW[grepl("F_AD", Mouse_Human_TCR_group_MW$Sex.condition),]
+M_AD <- Mouse_Human_TCR_group_MW[grepl("M_AD", Mouse_Human_TCR_group_MW$Sex.condition),]
+# Calculate p-values for each pair
+# T2D_PC3 Mann Whitney Comparison
+F_ControlvsM_Control <- wilcox.test(F_Control$T2D_PC3, M_Control$T2D_PC3, alternative = "two.sided")
+F_ControlvsF_AD <- wilcox.test(F_Control$T2D_PC3, F_AD$T2D_PC3, alternative = "two.sided")
+F_ControlvsM_AD <- wilcox.test(F_Control$T2D_PC3, M_AD$T2D_PC3, alternative = "two.sided")
+M_ControlvsF_AD <- wilcox.test(M_Control$T2D_PC3, F_AD$T2D_PC3, alternative = "two.sided")
+M_ControlvsM_AD <- wilcox.test(M_Control$T2D_PC3, M_AD$T2D_PC3, alternative = "two.sided")
+F_ADvsM_AD <- wilcox.test(F_AD$T2D_PC3, M_AD$T2D_PC3,alternative = "two.sided")
+# Create a list for the disease-sex pair relationships 
+Pairwise <- c("F-Control vs M-Control", "F_Control vs F-AD", "F-Control vs M-AD", "M-Control vs F-AD", "M-Control vs M-AD", "F-AD vs M-AD")
+# Prepare the pvalues in a list
+T2D_PC3 <- c(F_ControlvsM_Control$p.value, F_ControlvsF_AD$p.value, F_ControlvsM_AD$p.value, M_ControlvsF_AD$p.value, M_ControlvsM_AD$p.value, F_ADvsM_AD$p.value)
+# Generate Data frame for the MW test for T2D_PC3
+T2D_PC3_MW <- data.frame(Pairwise, T2D_PC3)
+colnames(T2D_PC3_MW)[2] <- "pval"
+# Perform Benjamini-Hochberg correction to account for multiple-testing
+T2D_PC3_MW$adjFDR<- p.adjust(T2D_PC3_MW$pval, method = "BH")
+```
+
+# 9 SUPPLEMENTAL INFORMATION
+## 9.1 Spearman Correlation For Multi-Collinearity
+```{r Spearman Correlation Among PCs}
+#svg('SpearmanCorr_SexAgeInt.svg', width = 4, height = 4)
+# Determining correlation among PCs identified with no age or sex main effects
+spearcorr_noint <- Mouse_Human_TCR_reg
+spearcorr_noint_col <- spearcorr_noint[, c("T2D_PC2", "T2D_PC3", "Both_PC3")]
+# Run the Spearman Correlation using corrplot
+correlation_matrix_noint <- cor(spearcorr_noint_col, method = "spearman")
+# Customize the appearance of the plot if necessary
+corrplot(correlation_matrix_noint, addCoef.col = 'black', method = "circle", type = "lower", tl.col = "black", tl.srt = 45)
+#dev.off()
+
+#svg('SpearmanCorr_NoInt.svg', width = 4, height = 4)
+# Determining correlation among PCs identified with age, sex, or age-sex main effects (all have the same three PCs selected)
+spearcorr_int <- Mouse_Human_TCR_reg
+spearcorr_int_col <- spearcorr_int[, c("AD_PC5", "T2D_PC2", "T2D_PC5", "T2D_PC3", "Both_PC3")]
+# Run the Spearman Correlation using corrplot
+correlation_matrix_int <- cor(spearcorr_int_col, method = "spearman")
+# Customize the appearance of the plot if necessary
+corrplot(correlation_matrix_int, addCoef.col = 'black', method = "circle", type = "lower", tl.col = "black", tl.srt = 45)
+#dev.off()
+```
+
+```{r Correlation Among Sex, Age, and PCs}
+# Determining correlation among PCs identified with age, sex, or age-sex main effects (all have the same three PCs selected)
+spearcorr_int <- Mouse_Human_TCR_reg
+spearcorr_int_col <- spearcorr_int[, c("T2D_PC2", "T2D_PC3", "Both_PC3", "Age", "Sex")]
+# Run the Spearman Correlation using corrplot
+correlation_matrix_int <- cor(spearcorr_int_col, method = "spearman")
+# Customize the appearance of the plot if necessary
+corrplot(correlation_matrix_int, addCoef.col = 'black', method = "circle", type = "lower", tl.col = "black", tl.srt = 45)
+```
+
+```{r Identifying Genes Enriched in Estrogen Pathways}
+# PULL GENE LISTS FROM HALLMARK
+# Pull the Hallmark T2D PC2 estrogen genes (enrichment genes)
+T2D_PC2_estrogen <- T2D_PC2_HALLMARK[grep("ESTROGEN", T2D_PC2_HALLMARK$ID, ignore.case = TRUE), ]
+T2D_PC2_estrogen <- T2D_PC2_estrogen$core_enrichment
+# Prepare dataframe and rename column
+T2D_PC2_estrogen <- as.data.frame(T2D_PC2_estrogen)
+colnames(T2D_PC2_estrogen)[1] <- "T2DPC2_genelist"
+# Delimiter by the /
+genelist_T2DPC2_estrogen <- strsplit(T2D_PC2_estrogen$T2DPC2_genelist, "/")
+# Prepare as dataframe and rename column again
+genelist_T2DPC2_estrogen <- as.data.frame(genelist_T2DPC2_estrogen)
+colnames(genelist_T2DPC2_estrogen)[1] <- "T2DPC2_genelist_early"
+
+# Pull the Hallmark Both PC3 estrogen genes (enrichment genes)
+Both_PC3_estrogen <- Both_PC3_HALLMARK[grep("ESTROGEN", Both_PC3_HALLMARK$ID, ignore.case = TRUE), ]
+Both_PC3_estrogen <- Both_PC3_estrogen$core_enrichment
+# Prepare dataframe and rename column
+Both_PC3_estrogen <- as.data.frame(Both_PC3_estrogen)
+colnames(Both_PC3_estrogen)[1] <- "BothPC3_genelist"
+# Delimiter by the /
+genelist_bothPC3_estrogen <- strsplit(Both_PC3_estrogen$BothPC3_genelist, "/")
+# Prepare as dataframe and rename column again
+genelist_bothPC3_estrogen <- as.data.frame(genelist_bothPC3_estrogen)
+colnames(genelist_bothPC3_estrogen)[1] <- "BothPC3_genelist_late"
+
+# Pull the Hallmark T2D PC3 estrogen genes (enrichment genes)
+T2D_PC3_estrogen <- T2D_PC3_HALLMARK[grep("ESTROGEN", T2D_PC3_HALLMARK$ID, ignore.case = TRUE), ]
+T2D_PC3_estrogen <- T2D_PC3_estrogen$core_enrichment
+# Prepare dataframe and rename column
+T2D_PC3_estrogen <- as.data.frame(T2D_PC3_estrogen)
+colnames(T2D_PC3_estrogen)[1] <- "T2DPC3_genelist"
+# Delimiter by the /
+genelist_T2DPC3_estrogen <- strsplit(T2D_PC3_estrogen$T2DPC3_genelist, "/")
+# Prepare as dataframe and rename column again
+genelist_T2DPC3_estrogen <- as.data.frame(genelist_T2DPC3_estrogen)
+colnames(genelist_T2DPC3_estrogen)[1] <- "T2DPC3_genelist_early"
+
+# DETERMINE OVERLAPPING GENES FROM PCs
+# Extract unique genes from each dataframe
+genes_T2DPC2 <- unique(na.omit(genelist_T2DPC2_estrogen$T2DPC2_genelist_early))
+genes_bothPC3 <- unique(na.omit(genelist_bothPC3_estrogen$BothPC3_genelist_late))
+genes_T2DPC3 <- unique(na.omit(genelist_T2DPC3_estrogen$T2DPC3_genelist_early))
+
+# Find overlapping genes for combinations of matching
+overlap_genes_all <- Reduce(intersect, list(genes_T2DPC2, genes_bothPC3, genes_T2DPC3))
+# Prepare data frame
+estrogen_gene_overlap <- data.frame(Overlapping_Genes = overlap_genes_all)
+
+# Find overlapping genes for combinations of matching (excluding other group)
+overlap_genes_T2DPC2_T2DPC3 <- Reduce(intersect, list(genes_T2DPC2, genes_T2DPC3))
+overlap_genes_T2DPC2_T2DPC3 <- overlap_genes_T2DPC2_T2DPC3[!overlap_genes_T2DPC2_T2DPC3 %in% genes_bothPC3]
+# Prepare data frame
+estrogen_gene_T2DPC2_T2DPC3 <- data.frame(Overlapping_Genes = overlap_genes_T2DPC2_T2DPC3)
+
+# Find overlapping genes for combinations of matching (excluding other group)
+overlap_genes_T2DPC2_BothPC3 <- Reduce(intersect, list(genes_T2DPC2, genes_bothPC3))
+overlap_genes_T2DPC2_BothPC3 <- overlap_genes_T2DPC2_BothPC3[!overlap_genes_T2DPC2_BothPC3 %in% genes_T2DPC3]
+# Prepare data frame
+estrogen_gene_T2DPC2_BothPC3 <- data.frame(Overlapping_Genes = overlap_genes_T2DPC2_BothPC3)
+
+# Find overlapping genes for combinations of matching (excluding other group)
+overlap_genes_T2DPC3_BothPC3 <- Reduce(intersect, list(genes_bothPC3, genes_T2DPC3))
+overlap_genes_T2DPC3_BothPC3 <- overlap_genes_T2DPC3_BothPC3[!overlap_genes_T2DPC3_BothPC3 %in% genes_T2DPC2]
+# Prepare data frame
+estrogen_gene_T2DPC3_BothPC3 <- data.frame(Overlapping_Genes = overlap_genes_T2DPC3_BothPC3)
+
+# Determine genes only associated with T2D PC2
+genes_T2DPC2_only <- genes_T2DPC2[!genes_T2DPC2 %in% genes_T2DPC3]
+genes_T2DPC2_only <- genes_T2DPC2_only[!genes_T2DPC2_only %in% genes_bothPC3]
+# Prepare data frame
+genes_T2DPC2_only <- data.frame(Overlapping_Genes = genes_T2DPC2_only)
+
+# Determine genes only associated with T2D PC3
+genes_T2DPC3_only <- genes_T2DPC3[!genes_T2DPC3 %in% genes_T2DPC2]
+genes_T2DPC3_only <- genes_T2DPC3_only[!genes_T2DPC3_only %in% genes_bothPC3]
+# Prepare data frame
+genes_T2DPC3_only <- data.frame(Overlapping_Genes = genes_T2DPC3_only)
+
+# Determine genes only associated with Both PC3
+genes_bothPC3_only <- genes_bothPC3[!genes_bothPC3 %in% genes_T2DPC2]
+genes_bothPC3_only <- genes_bothPC3_only[!genes_bothPC3_only %in% genes_T2DPC3]
+# Prepare data frame
+genes_bothPC3_only <- data.frame(Overlapping_Genes = genes_bothPC3_only)
+
+# SAVE FILE AS EXCEL FILE
+# Write the data frames to an Excel file with each data frame on a separate sheet
+# Saves all genes enriched in the estrogen pathways
+write.xlsx(list(T2D_PC2_Only = genes_T2DPC2_only,
+                T2D_PC3_Only = genes_T2DPC3_only,
+                ADxT2D_PC3_Only = genes_bothPC3_only,
+                T2D_PC2_T2D_PC3_Overlap = estrogen_gene_T2DPC2_T2DPC3,
+                T2D_PC2_ADxT2D_PC3_Overlap = estrogen_gene_T2DPC2_BothPC3,
+                T2D_PC3_ADxT2D_PC3_Overlap = estrogen_gene_T2DPC3_BothPC3,
+                All_PCs_Overlap = estrogen_gene_overlap
+                ), file = "Shared_Estrogen_Genelist.xlsx")
+```
+
+
+
+*** END OF SCRIPT ***
+
+
+
+
+
+
