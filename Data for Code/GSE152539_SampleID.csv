@@ -1,0 +1,13 @@
+﻿Group,Accession,Title,Source name,Diabetes status,Diet,Genotype,Tissue,Sex,Age
+-,GSM4617793,"wild-type mouse fed with control diet, biological rep1",hippocampus from wild-type mouse fed with control diet for 12 months,non-diabetic,control,wild-type,hippocampus,male,18 months
+-,GSM4617794,"wild-type mouse fed with control diet, biological rep2",hippocampus from wild-type mouse fed with control diet for 12 months,non-diabetic,control,wild-type,hippocampus,male,18 months
+-,GSM4617795,"wild-type mouse fed with control diet, biological rep3",hippocampus from wild-type mouse fed with control diet for 12 months,non-diabetic,control,wild-type,hippocampus,male,18 months
+-,GSM4617796,"wild-type mouse fed with high fat diet, biological rep1",hippocampus from wild-type mouse fed with high fat diet for 12 months,diabetic,high fat diet,wild-type,hippocampus,male,18 months
+-,GSM4617797,"wild-type mouse fed with high fat diet, biological rep2",hippocampus from wild-type mouse fed with high fat diet for 12 months,diabetic,high fat diet,wild-type,hippocampus,male,18 months
+-,GSM4617798,"wild-type mouse fed with high fat diet, biological rep3",hippocampus from wild-type mouse fed with high fat diet for 12 months,diabetic,high fat diet,wild-type,hippocampus,male,18 months
+-,GSM4617799,"App[NL-F/NL-F] mouse fed with control diet, biological rep1",hippocampus from App[NL-F/NL-F] mouse fed with control diet for 12 months,non-diabetic,control,App knock-in,hippocampus,male,18 months
+-,GSM4617800,"App[NL-F/NL-F] mouse fed with control diet, biological rep2",hippocampus from App[NL-F/NL-F] mouse fed with control diet for 12 months,non-diabetic,control,App knock-in,hippocampus,male,18 months
+-,GSM4617801,"App[NL-F/NL-F] mouse fed with control diet, biological rep3",hippocampus from App[NL-F/NL-F] mouse fed with control diet for 12 months,non-diabetic,control,App knock-in,hippocampus,male,18 months
+-,GSM4617802,"App[NL-F/NL-F] mouse fed with high fat diet, biological rep1",hippocampus from App[NL-F/NL-F] mouse fed with high fat diet for 12 months,diabetic,high fat diet,App knock-in,hippocampus,male,18 months
+-,GSM4617803,"App[NL-F/NL-F] mouse fed with high fat diet, biological rep2",hippocampus from App[NL-F/NL-F] mouse fed with high fat diet for 12 months,diabetic,high fat diet,App knock-in,hippocampus,male,18 months
+-,GSM4617804,"App[NL-F/NL-F] mouse fed with high fat diet, biological rep3",hippocampus from App[NL-F/NL-F] mouse fed with high fat diet for 12 months,diabetic,high fat diet,App knock-in,hippocampus,male,18 months
